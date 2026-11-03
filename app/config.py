@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     openai_compat_api_key: str = ""
     openai_compat_base_url: str = ""
 
+    # Telegram bot (D4a). Bot disabled until the token is set. All build-level placeholders.
+    telegram_bot_token: str = ""           # Fly secret
+    telegram_webhook_secret: str = ""      # Fly secret; Telegram echoes it in a header on every call
+    telegram_allowed_user_id: str = ""     # Braj's numeric Telegram id; empty = reject everyone
+    telegram_public_base_url: str = "https://mini-me.fly.dev"
+    telegram_api_base: str = "https://api.telegram.org"
+    telegram_blind_ratio: float = 0.2      # ~1 in 5 (5.15 pt 3) [adjustable after testing]
+    telegram_capture_window_hours: float = 24.0  # no capture in this window -> outcome unknown [placeholder]
+    telegram_sweep_minutes: float = 10.0   # background check for expired capture windows
+
     @property
     def sqlalchemy_url(self) -> str:
         """Neon gives postgresql://; SQLAlchemy needs the psycopg3 driver name."""

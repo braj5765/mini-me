@@ -73,6 +73,24 @@ message_records = Table(
 )
 
 
+# Telegram bot plumbing (D4a). Holds Telegram ids and timers only: NO message text of any kind.
+# Additive table (create_all adds it; nothing existing changes). Needed because the bot must map a
+# Telegram message id back to a message_id, and survive Fly scale-to-zero restarts.
+telegram_threads = Table(
+    "telegram_threads", metadata,
+    Column("message_id", String(64), primary_key=True),
+    Column("chat_id", String(32), nullable=False),
+    Column("incoming_tg_msg_id", Integer),       # the forwarded / pasted message
+    Column("prompt_tg_msg_id", Integer),         # the bot's draft message, or its blind-sample notice
+    Column("state", String(16), nullable=False),  # shown | blind_held | closed
+    Column("shown_at", DateTime(timezone=True)),  # when the user could first act (draft shown / notice sent)
+    Column("deadline_at", DateTime(timezone=True), nullable=False),  # capture window end
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Index("ix_tgthreads_state_deadline", "state", "deadline_at"),
+    Index("ix_tgthreads_prompt", "chat_id", "prompt_tg_msg_id"),
+)
+
+
 @lru_cache
 def get_engine() -> Engine:
     return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True, future=True)

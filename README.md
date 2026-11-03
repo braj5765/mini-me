@@ -22,5 +22,13 @@ curl https://<your-app>.fly.dev/healthz
 ```
 Secrets live only in Fly secrets. Back up `PSEUDONYM_KEY`.
 
+## Telegram bot (D4a)
+Private bot for one user; draft-only. Notes: `docs/mini-me-dev-telegram.md`. Needs three Fly secrets:
+```bash
+fly secrets set TELEGRAM_BOT_TOKEN='...' TELEGRAM_WEBHOOK_SECRET='...' TELEGRAM_ALLOWED_USER_ID='...'
+fly deploy      # the app registers its own webhook on startup
+```
+The bot stays off (503) until the token and secret are set.
+
 ## Rules
 Own and made-up messages only until the privacy build (D3b) is done.

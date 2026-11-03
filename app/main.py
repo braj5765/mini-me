@@ -1,4 +1,6 @@
 """FastAPI entrypoint. D1a scope: health check + single-user login. No product screens."""
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
@@ -8,15 +10,33 @@ from app import auth, db
 from app.config import get_settings
 from app.events import EventName, EventWriter
 from app.events.writer import make_key
+from app.telegram import router as tg_router
+from app.telegram import runtime as tg_runtime
+
+log = logging.getLogger("minime")
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_settings().require_prod_secrets()
+    settings = get_settings()
+    settings.require_prod_secrets()
     db.init_db()
+    sweeper = None
+    if tg_runtime.telegram_enabled(settings):
+        deps = tg_router.get_bot_deps()
+        try:  # register the webhook once per cold start if it is not already set (never blocks startup)
+            await asyncio.to_thread(tg_runtime.ensure_webhook, settings, deps.client)
+        except Exception:  # noqa: BLE001
+            log.exception("could not register the Telegram webhook")
+        sweeper = asyncio.create_task(
+            tg_runtime.sweep_loop(tg_router.get_bot_deps, settings.telegram_sweep_minutes))
     yield
+    if sweeper:
+        sweeper.cancel()
 
 
 app = FastAPI(title="Mini Me", version=get_settings().app_version, lifespan=lifespan)
+app.include_router(tg_router.router)
 
 
 def current_user(request: Request) -> str:
