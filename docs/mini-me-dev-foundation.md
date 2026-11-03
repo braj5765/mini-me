@@ -1,6 +1,6 @@
 # Mini Me — Dev 1: Foundation (D1a, D2a, D3a)
 
-_Built 3 Nov 2026 · Spoke: Dev 1 Foundation · Status: code complete, 38 tests passing on SQLite; not yet deployed or pushed (GitHub link pending)._
+_Built 3 Nov 2026 · Spoke: Dev 1 Foundation · Status: code complete, 38 tests passing on SQLite; pushed to github.com/braj5765/mini-me (main); deployed to Fly at https://mini-me.fly.dev (region sin) on Neon Postgres; `/healthz` returns ok (3 Nov 2026)._
 
 Source of truth: decisions 5.7, 5.12, 5.13, 5.14, 5.15; PRD F26, NFR-6/7; timeline section 3. Where PRD and decisions differ, decisions win.
 
@@ -122,10 +122,13 @@ w.mark_outcome_unknown(mid)              # excluded from every score
 
 ## 7. Tests
 38 tests, all passing on SQLite: masking (phones, emails, dates, idempotency, pseudonym stability and key dependence), writer (common fields, idempotency, repeatable-event keys, enum validation, unknown fields, outcome unknown never scorable, blind state, signal vs edit class, masked incoming text), auth, config, LLM guard.
-**Not yet run:** against real Postgres/Neon, and the Docker build. First deploy will exercise both.
+**Verified on first deploy (3 Nov 2026):** Docker build succeeded; the release command `python -m app.migrate` created the tables on Neon Postgres; `/healthz` returns `{"ok":true,"version":"0.1.0"}`, so the app reaches the database.
+**Not yet run:** the automated tests against Postgres (they run on SQLite only), and the live login (`POST /login`) on Fly. Braj chose to skip the login check for now.
 
 ## 8. Build-level choices
 Names `events`, `message_records`, snake_case event names and enum values above; `message_records.scorable` boolean; default idempotency keys per message; `log_safe`; `create_all` until D1b; scale-to-zero Fly machine (256 MB); region `sin`.
 
 ## 9. Not done / deferred
-Telegram bot (D4a), self-model, drafting, classifier, UI, Gmail, 7-day purge (D3b), retry queue (D2b), CI/backups (D1b), threshold values, real third-party data. Deploy and push wait on the GitHub link and your Fly/Neon steps.
+Telegram bot (D4a), self-model, drafting, classifier, UI, Gmail, 7-day purge (D3b), retry queue (D2b), CI/backups (D1b), threshold values, real third-party data.
+
+**Deploy notes.** Fly app `mini-me`, shared-cpu-1x, 256 MB. `fly launch` created 2 machines for high availability; run `fly scale count 1 --yes` to keep one (cost). The org had no payment method at first deploy; Fly may ask for one. Secrets (`DATABASE_URL`, `APP_SECRET`, `PSEUDONYM_KEY`, `LOGIN_PASSWORD_HASH`) are set as Fly secrets only. On Windows PowerShell use a conda env with Python 3.12 (system Python was 3.9) and single quotes around secret values (the hash contains `$`).
