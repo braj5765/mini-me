@@ -25,6 +25,7 @@ class TelegramAPI(Protocol):
                      reply_to_message_id: int | None = None) -> int: ...
     def answer_callback(self, callback_query_id: str, text: str = "") -> None: ...
     def clear_buttons(self, chat_id: int | str, message_id: int) -> None: ...
+    def edit_message_text(self, chat_id: int | str, message_id: int, text: str) -> None: ...
     def get_webhook_url(self) -> str: ...
     def set_webhook(self, url: str, secret_token: str) -> None: ...
 
@@ -66,6 +67,12 @@ class TelegramClient:
     def clear_buttons(self, chat_id, message_id) -> None:
         self._call("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": message_id,
                                               "reply_markup": {"inline_keyboard": []}})
+
+    def edit_message_text(self, chat_id, message_id, text) -> None:
+        """Replace the text and drop the buttons in one call."""
+        self._call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text,
+                                       "disable_web_page_preview": True,
+                                       "reply_markup": {"inline_keyboard": []}})
 
     def get_webhook_url(self) -> str:
         return self._call("getWebhookInfo").get("url", "")

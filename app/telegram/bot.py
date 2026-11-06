@@ -135,6 +135,18 @@ def _safe_clear_buttons(deps: BotDeps, chat_id: Any, msg_id: int | None) -> None
         log.warning("could not clear buttons")
 
 
+def _mark_draft_message(deps: BotDeps, chat_id: Any, msg_id: int, original: str | None, status: str) -> None:
+    """Show what happened on the draft itself (so 'done' is visible in the chat). Falls back to just
+    removing the buttons if Telegram did not give us the text or refuses the edit."""
+    if original:
+        try:
+            deps.client.edit_message_text(chat_id, msg_id, fmt.with_status(original, status))
+            return
+        except Exception:  # noqa: BLE001
+            log.warning("could not edit the draft message")
+    _safe_clear_buttons(deps, chat_id, msg_id)
+
+
 def _run_hook(deps: BotDeps, message_id: str, capture: str) -> None:
     try:
         deps.on_captured(message_id, capture)
@@ -201,8 +213,11 @@ def _handle_command(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
     elif cmd == "/stats":
         deps.client.send_message(chat_id, deps.stats_provider(deps))
     elif cmd == "/pending":
-        n = deps.store.count_open(chat_id)
-        deps.client.send_message(chat_id, f"{n} waiting for you." if n else fmt.NOTHING_WAITING)
+        items = []
+        for t in deps.store.list_open(chat_id):
+            rec = deps.writer.get_message(t["message_id"]) or {}
+            items.append((t["number"], rec.get("incoming_text") or "", t["state"]))
+        deps.client.send_message(chat_id, fmt.pending_list(items))
     elif cmd == "/sent":
         thread = deps.store.latest_open(chat_id)
         if not thread:
@@ -243,6 +258,8 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
         **common,
     )
 
+    prev_open = deps.store.latest_open(chat_id) if kind == "pasted" else None  # for the nudge, see below
+
     t0 = time.monotonic()
     result = deps.drafter.draft(DraftRequest(
         message_id=mid, masked_text=masked, channel=CHANNEL, domain=DOMAIN,
@@ -268,6 +285,7 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
     now = deps.now()
     deps.store.create(mid, chat_id, m["message_id"], "blind_held" if blind else "shown", now,
                       deps.settings.telegram_capture_window_hours)
+    number = deps.store.number_of(chat_id, mid)
     try:
         if blind:
             prompt_id = deps.client.send_message(chat_id, fmt.BLIND_NOTICE, reply_to_message_id=m["message_id"])
@@ -276,13 +294,22 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
                             payload={"ratio": deps.settings.telegram_blind_ratio}, **common)
         else:
             prompt_id = deps.client.send_message(
-                chat_id, fmt.draft_message(result), reply_markup=fmt.keyboard(mid),
+                chat_id, fmt.draft_message(result, number, masked), reply_markup=fmt.keyboard(mid),
                 reply_to_message_id=m["message_id"])
             deps.store.set_prompt(mid, prompt_id)
             deps.writer.log(EventName.draft_shown, message_id=mid,
                             idempotency_key=make_key("draft_shown", mid, 1), payload={"view_no": 1}, **common)
     except Exception:  # noqa: BLE001  (message stays 'waiting'; the sweep will mark it unknown)
         log.exception("could not send the draft message")
+        return
+
+    # A plain (not forwarded) message while another one is still open is often the user's final text, typed
+    # without using Reply. It was treated as new (decision: only Reply or /sent captures); say so, calmly.
+    if prev_open is not None:
+        try:
+            deps.client.send_message(chat_id, fmt.nudge(deps.store.number_of(chat_id, prev_open["message_id"])))
+        except Exception:  # noqa: BLE001
+            log.warning("could not send the nudge")
 
 
 # --------------------------------------------------------------------------- capture
@@ -300,6 +327,7 @@ def _capture_final_text(thread: dict, final_text: str, chat_id: int, deps: BotDe
     tta = _ms_since(deps, thread.get("shown_at"))
     common = _common(rec.get("contact_type"))
     via = "reply_text"
+    number = deps.store.number_of(chat_id, mid)
 
     deps.writer.upsert_message(mid, sent_text=sent, outcome=outcome, time_to_action_ms=tta)
     deps.writer.log(EventName.draft_acted, message_id=mid, idempotency_key=make_key("draft_acted", mid),
@@ -312,12 +340,12 @@ def _capture_final_text(thread: dict, final_text: str, chat_id: int, deps: BotDe
 
     if state == "blind_held":
         # Blind sample (5.15 pt 3): the reply came first; only now show the held draft.
-        deps.client.send_message(chat_id, fmt.released_message(draft_text, matched))
+        deps.client.send_message(chat_id, fmt.released_message(draft_text, matched, number))
         deps.writer.log(EventName.draft_released_after_reply, message_id=mid,
                         payload={"matched": matched}, **common)
     else:
         _safe_clear_buttons(deps, chat_id, thread.get("prompt_tg_msg_id"))
-        deps.client.send_message(chat_id, "Saved: sent as written." if matched else "Saved: edited before sending.")
+        deps.client.send_message(chat_id, fmt.saved(number, matched))
 
     _run_hook(deps, mid, via)
 
@@ -352,7 +380,7 @@ def _handle_callback(cq: dict, deps: BotDeps) -> None:
                         payload={"sent_text": sent, "sent_by": "user", "edited": False, "capture": "button"},
                         **common)
         deps.client.answer_callback(cq["id"], "Saved: sent as written.")
-        _safe_clear_buttons(deps, chat_id, prompt_id)
+        _mark_draft_message(deps, chat_id, prompt_id, cq["message"].get("text"), fmt.STATUS_SENT)
         _run_hook(deps, mid, "button")
     else:
         deps.writer.upsert_message(mid, outcome="discarded", time_to_action_ms=tta)
@@ -361,7 +389,7 @@ def _handle_callback(cq: dict, deps: BotDeps) -> None:
                                  "shown_state": "shown"}, **common)
         deps.writer.log(EventName.draft_discarded, message_id=mid, payload={"reason": None}, **common)
         deps.client.answer_callback(cq["id"], "Discarded.")
-        _safe_clear_buttons(deps, chat_id, prompt_id)
+        _mark_draft_message(deps, chat_id, prompt_id, cq["message"].get("text"), fmt.STATUS_DISCARDED)
 
 
 # --------------------------------------------------------------------------- outcome unknown

@@ -63,6 +63,32 @@ class ThreadStore:
                 and_(t.c.chat_id == str(chat_id), t.c.state.in_(OPEN_STATES)))).all()
         return len(rows)
 
+    def _order(self, chat_id: int | str) -> list[str]:
+        t = db.telegram_threads
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(t.c.message_id).where(t.c.chat_id == str(chat_id))
+                                .order_by(t.c.created_at, t.c.message_id)).all()
+        return [r[0] for r in rows]
+
+    def number_of(self, chat_id: int | str, message_id: str) -> int:
+        """Draft number shown to the user (#1, #2, ...): position of the thread in creation order.
+        Derived, not stored (no schema change); stable because threads are never deleted."""
+        order = self._order(chat_id)
+        return order.index(message_id) + 1 if message_id in order else 0
+
+    def list_open(self, chat_id: int | str) -> list[dict[str, Any]]:
+        t = db.telegram_threads
+        order = {m: i + 1 for i, m in enumerate(self._order(chat_id))}
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(t).where(and_(t.c.chat_id == str(chat_id), t.c.state.in_(OPEN_STATES)))
+                                .order_by(t.c.created_at, t.c.message_id)).mappings().all()
+        out = []
+        for r in rows:
+            d = self._fix(r)
+            d["number"] = order.get(d["message_id"], 0)
+            out.append(d)
+        return out
+
     def claim(self, message_id: str) -> bool:
         """Atomically close an open thread. True only for the one caller that closed it (retries lose)."""
         t = db.telegram_threads

@@ -1,6 +1,6 @@
 # Mini Me — Dev 2: Telegram bot (D4a, v0.1 part)
 
-_Built 3 Nov 2026 · Spoke: Dev 2 Telegram bot · Status: code complete, 79 tests passing on SQLite (38 foundation + 41 new), end-to-end run on made-up messages against a local fake of the Telegram API. **Not yet deployed:** needs the bot token, Braj's Telegram id and `fly deploy` (steps in section 9)._
+_Built 3 Nov 2026, UX build 7 Nov 2026 · Spoke: Dev 2 Telegram bot · Status: **deployed on Fly (mini-me.fly.dev) and tested by Braj on real Telegram, 6 Nov**; 93 tests passing on SQLite (38 foundation + 55 for the bot). First build on 3 Nov; the 7 Nov build adds the chat-clarity changes from that testing (section 4a)._
 
 Source of truth: decisions 5.7, 5.7a (Telegram note), 5.13 pts 1–3 and 6, 5.14, 5.15 pt 3, 5.16; foundation doc; timeline section 3 (v0.1 rules). Where the PRD differs, decisions win.
 
@@ -33,9 +33,9 @@ The drafter is a **stub** (fixed template, no model call). D8a replaces it. Ever
 | Forward or paste a message | New message: mask → pseudonymise → draft |
 | **✓ Sent as is** (button under a draft) | Records the draft as what he sent |
 | **Discard** (button) | Records the draft as discarded |
-| Reply to a draft with text | Records that text as what he sent (one tap less than retyping; an unchanged text counts as as-is) |
-| `/sent <text>` | Same, for the most recent waiting message (no swipe needed on a phone) |
-| `/pending` | "N waiting for you." |
+| Reply to a draft with text | Records that text as what he sent (an unchanged text counts as as-is). "Reply" = Telegram's own feature: swipe the draft left on a phone, or right-click it and choose Reply on a computer |
+| `/sent <text>` | Same, but for the **newest** waiting message (no Reply needed). Careful: a plain message you just sent is itself the newest one |
+| `/pending` | Lists what is waiting: `#4 · "re: first 40 characters (masked)"`; blind items marked "(my draft is held back)" without showing the draft |
 | `/stats` | Stub: "Stats are coming soon…" (D11a) |
 | `/help`, `/start` | Short usage text |
 
@@ -50,6 +50,13 @@ Copy follows design-core: calm, no "unlock / gate / level up" (there is a test f
 **Blind (config ratio, default 0.2; 5.15 pt 3).** Same draft is generated and stored, but the DM only gets: "I've drafted this one; reply first and I'll show you mine." No buttons, no "Sent as is". → `draft_held_blind`. When he replies to that note (or `/sent`), the reply is stored as `sent_text`, `draft_acted` + `draft_sent` are logged, then the held draft is shown with "Same as / Different from what you sent" → `draft_released_after_reply`, then the D9a hook. A blind message has no `draft_shown` event by design (the release is the first sight).
 
 **Outcome unknown (5.13 pt 2).** Every shown or blind message has a capture window (default **24 h**, placeholder). Nothing captured when it ends → record `outcome=unknown`, `scorable=False`, event `outcome_unknown` (`reason`, `window_hours`, `shown_state`; `occurred_at` = window end). Never counted as an accept. A late button press cannot revive it. The sweep runs: on every incoming update, every 10 min while the machine is awake, and via `POST /telegram/sweep`.
+
+**4a. Reading the chat (7 Nov build, after real-Telegram testing).** Braj could not tell when a message was done, or what to do mid-way.
+- **Numbered drafts:** `Draft #3 ... Re: "<first 40 characters, masked>"`. The number is the thread's position in creation order (derived, not stored; no schema change). Confirmations use it: `Saved #3: ...`, `Here's the draft I held back for #3:`.
+- **Visible "done":** after **Sent as is** or **Discard** the draft message itself is rewritten (buttons removed, the "Edited it?" hint replaced by `✓ Recorded: sent as is` or `Discarded: not sent`). Falls back to just removing the buttons if Telegram gives no text or refuses the edit. A reply-capture still gets the numbered "Saved #N" message.
+- **Mid-way / starting something new:** just send a new message; any number of drafts can be open, each with its own buttons. Unfinished ones expire to outcome unknown after the window. Discard is the only explicit way to drop one.
+- **Nudge:** a *plain* (not forwarded) message sent while another is open is still treated as new (decision: only Reply or `/sent` capture), but the bot adds: "I treated that as a new message. If it was your final reply to #N, reply to my message for #N instead (swipe it left, or right-click and choose Reply)." Never sent for forwards or when nothing is open.
+- Editing one of your own sent messages in Telegram does nothing (edits are not listened to).
 
 **Contact type (5.13 pt 6).** Forwarded from a user → individual; forwarded from a chat/channel → group; **pasted → group** (default). Known = Braj has already replied (sent / edited / user-authored) to the same pseudonym, else new. Pasted messages get a unique pseudonym each, so they can never become "known" (see flag 3).
 
@@ -95,11 +102,13 @@ def stats_provider(deps: BotDeps) -> str     # return the reply text; deps.write
 ## 7. How to run and test
 
 ```bash
-pip install -e ".[dev]" && python -m pytest          # 79 tests, no network, no token
+pip install -e ".[dev]" && python -m pytest          # 93 tests, no network, no token
 ```
 Local end-to-end without Telegram: run the app with the Telegram env vars set and `TELEGRAM_API_BASE` pointing to any stub server, then POST updates to `/telegram/webhook` with the `X-Telegram-Bot-Api-Secret-Token` header (this is how the manual run below was done).
 
 **Manual run (3 Nov 2026, made-up messages, real app + real HTTP client against a fake Telegram API):** `/start`; forward → draft → ✓ Sent as is; pasted message → edited reply; forward from a group → Discard; `/pending`, `/stats`; blind forced → draft held → reply → draft released; 0.0005 h window → left alone → next update marks outcome unknown. Result: 5 message records (4 scorable, 1 unknown), 9 event types logged, wrong secret = 403, stranger = silence, webhook registered once (not again after restart), **no raw phone / email / Telegram id in any table, bot token absent from the log**.
+
+**Real-Telegram test (6 Nov, Braj, made-up messages, bot live on Fly):** `/start`, drafts with both buttons, discard, reply-with-edit, reply-identical (as is), `/sent`, phone/email masking, blind notice and release (reply and `/sent`, match and mismatch), `/pending`, `/stats`, and outcome unknown with a shortened window. Queried the database: 19 message rows; outcomes sent_as_is / edited_sent / discarded / unknown / waiting all correct; `scorable` true only for known outcomes; text masked (`[PHONE]`, `[EMAIL]`); every contact type `new_group` (all pasted). One planned check did not apply: a blind message created under the 24 h window stayed `waiting` after the window setting was shortened, because **the deadline is fixed when each message arrives** (intended; now documented and tested).
 
 ## 8. Build-level choices
 
@@ -116,7 +125,11 @@ Local end-to-end without Telegram: run the app with the Telegram env vars set an
 - **Mode** is `shadow` on all Telegram events (live autonomy is Gmail only, 5.13 pt 1). `autonomy_decision` on the record is `draft_notify`.
 - **Telegram token safety:** httpx request logging is turned down (it prints URLs containing the token); client errors never include the URL.
 - `outcome_unknown.occurred_at` is the window end, not the wake-up time; `recorded_at` shows when it was written.
-- Stub draft quotes the first 60 characters of the **masked** incoming text, so the loop can be exercised.
+- Stub draft quotes the first 60 characters of the **masked** incoming text, so the loop can be exercised. Shortened quotes (stub and the `Re:` line) never cut through a `[PHONE]` / `[EMAIL]` token (`snippet()` in `app/drafting/base.py`).
+- **Capture deadline is fixed per message** when it arrives (`telegram_threads.deadline_at`). Changing `TELEGRAM_CAPTURE_WINDOW_HOURS` affects only new messages.
+- **Draft numbers are derived** (creation order within the chat), so no new column and no migration; relies on threads never being deleted.
+- **Status line via `editMessageText`**, using the message text Telegram sends with the button tap (nothing extra stored).
+- **Nudge** is a separate short message after the draft, only for pasted messages while another is open.
 
 ## 9. Deploy steps (for Braj; not possible from this session: no Fly access)
 
@@ -141,5 +154,8 @@ Real drafting (D8a), classifier (D9a), `/stats` content (D11a), self-model, exte
 6. **Blind messages cannot be skipped on purpose.** No reply simply expires to unknown after 24 h, so "I chose not to answer" and "I forgot" look the same. Fine for now.
 7. **Edit class for sent-as-is is left to D9a** (so `/stats` cannot count classes until then). `autonomy_decision` events are left to D10/D22.
 8. **Timeline note:** D4a is done in about the planned scope; webhook auto-registration and the thread table were small additions (about 1–2 h inside D4a's 7 h). No date change.
-9. **Cosmetic:** the stub draft cuts its quote at 60 characters and can cut through a `[PHONE]` token. Irrelevant once D8a lands.
+9. _(Fixed 7 Nov)_ The stub quote could be cut through a `[PHONE]` token; shortened quotes now drop a partial token.
 10. `device_type` is NULL for Telegram (foundation example suggested `mobile`). Only matters if M11 should count Telegram.
+11. **Stub test rows are mixed with future data.** Every `draft_generated` event from this bot carries `payload.is_stub = true`. D9a / D11a must exclude those (or the rows must be cleared) before real dogfood numbers are read, otherwise stub accepts and discards will pollute the as-is / edit rates. Test rows from 6 Nov (19) are all stub rows.
+12. **Edits to your own messages are ignored** (the bot does not subscribe to edited messages). The way to correct a final text is to Reply to the draft with it.
+13. **Blind ratio and capture window can be changed without code** (`fly secrets set TELEGRAM_BLIND_RATIO=1` forces every draft blind; `TELEGRAM_CAPTURE_WINDOW_HOURS=0.02` is about a minute). Useful for testing; set back to `0.2` and `24` afterwards. A forgotten short window would expire real messages in about a minute.

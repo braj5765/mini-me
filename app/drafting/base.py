@@ -11,6 +11,17 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 
+def snippet(text: str, limit: int = 60) -> str:
+    """Whitespace-normalised, shortened quote of (already masked) text. Never cuts through a [TOKEN]."""
+    flat = " ".join((text or "").split())
+    if len(flat) <= limit:
+        return flat
+    cut = flat[:limit]
+    if cut.rfind("[") > cut.rfind("]"):  # ended inside a [PHONE] / [EMAIL] token: drop the partial token
+        cut = cut[:cut.rfind("[")]
+    return cut.rstrip() + "..."
+
+
 @dataclass(frozen=True)
 class DraftRequest:
     message_id: str

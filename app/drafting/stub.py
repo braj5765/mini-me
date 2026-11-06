@@ -3,7 +3,7 @@
 Makes no model call and sends nothing to any provider (v0.1 rule: LLM guard stays on). It fills a fixed
 template, so the whole capture -> classify -> log loop can be exercised end to end.
 """
-from app.drafting.base import DraftRequest, DraftResult
+from app.drafting.base import DraftRequest, DraftResult, snippet
 
 STUB_NAME = "stub"
 STUB_VERSION = "stub-0.1"
@@ -12,9 +12,7 @@ _SNIPPET_CHARS = 60
 
 class StubDrafter:
     def draft(self, req: DraftRequest) -> DraftResult:
-        flat = " ".join(req.masked_text.split())
-        snippet = flat[:_SNIPPET_CHARS] + ("..." if len(flat) > _SNIPPET_CHARS else "")
-        text = f'Thanks for your message ("{snippet}"). I\'ll get back to you shortly.'
+        text = f'Thanks for your message ("{snippet(req.masked_text, _SNIPPET_CHARS)}"). I\'ll get back to you shortly.'
         return DraftResult(
             text=text,
             confidence=0.5,

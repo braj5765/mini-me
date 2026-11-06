@@ -30,6 +30,8 @@ class FakeTelegram:
         self.sent: list[dict] = []        # every message the bot sends
         self.answers: list[tuple] = []
         self.cleared: list[tuple] = []
+        self.edited: list[tuple] = []     # (chat_id, message_id, new_text)
+        self.fail_edit = False
         self._next = 1000
         self.webhook = ""
 
@@ -44,6 +46,11 @@ class FakeTelegram:
 
     def clear_buttons(self, chat_id, message_id):
         self.cleared.append((chat_id, message_id))
+
+    def edit_message_text(self, chat_id, message_id, text):
+        if self.fail_edit:
+            raise TelegramError("editMessageText: message is not modified")
+        self.edited.append((chat_id, message_id, text))
 
     def get_webhook_url(self):
         return self.webhook
@@ -99,11 +106,13 @@ def _msg(text, *, user=BRAJ, chat=CHAT, chat_type="private", forward=None, reply
     return {"update_id": _n[0], "message": m}
 
 
-def _cb(data, msg_id, *, user=BRAJ, chat=CHAT):
+def _cb(data, msg_id, *, user=BRAJ, chat=CHAT, text=None):
     _n[0] += 1
+    message = {"message_id": msg_id, "chat": {"id": chat, "type": "private"}}
+    if text is not None:
+        message["text"] = text  # Telegram includes the text of the message the button sits under
     return {"update_id": _n[0], "callback_query": {
-        "id": f"cb{_n[0]}", "from": {"id": user}, "data": data,
-        "message": {"message_id": msg_id, "chat": {"id": chat, "type": "private"}}}}
+        "id": f"cb{_n[0]}", "from": {"id": user}, "data": data, "message": message}}
 
 
 FWD_USER = {"type": "user", "sender_user": {"id": 777000111}}
@@ -457,7 +466,7 @@ def test_commands(env):
     assert env.fake.sent[-1]["text"] == fmt.NOTHING_WAITING
     _forward_and_get_draft(env)
     handle_update(_msg("/pending"), env)
-    assert env.fake.sent[-1]["text"] == "1 waiting for you."
+    assert env.fake.sent[-1]["text"].startswith("1 waiting for you:\n#1 · ")
     handle_update(_msg("/stats"), env)
     assert env.fake.sent[-1]["text"] == fmt.STATS_STUB
 
@@ -497,7 +506,9 @@ def test_no_gate_wording_in_bot_copy():
     blob = " ".join([fmt.HELP, fmt.STATS_STUB, fmt.BLIND_NOTICE, fmt.NO_TEXT, fmt.NOTHING_WAITING,
                      fmt.ALREADY_RECORDED, fmt.BTN_SENT, fmt.BTN_DISCARD,
                      fmt.draft_message(StubDrafter().draft(DraftRequest("m", "hi", "telegram", "d", "x", "p"))),
-                     fmt.released_message("d", True), fmt.released_message("d", False)]).lower()
+                     fmt.released_message("d", True), fmt.released_message("d", False),
+                     fmt.nudge(2), fmt.saved(1, True), fmt.saved(1, False), fmt.STATUS_SENT, fmt.STATUS_DISCARDED,
+                     fmt.pending_list([(1, "hi", "shown"), (2, "yo", "blind_held")])]).lower()
     for banned in ("unlock", "gate", "level up"):
         assert banned not in blob
 
@@ -516,6 +527,178 @@ def test_ensure_webhook_is_idempotent(env):
     assert ensure_webhook(env.settings, env.fake) is True
     assert env.fake.webhook == "https://mini-me.fly.dev/telegram/webhook"
     assert ensure_webhook(env.settings, env.fake) is False
+
+
+# ---------------------------------------------------------------- numbering, status line, /pending, nudge
+def _next_message(env, text, **kw):
+    """Send one more message a second later (so draft numbers follow creation order)."""
+    env.clock.advance(seconds=1)
+    handle_update(_msg(text, **kw), env)
+    return env.fake.sent[-1]
+
+
+def test_drafts_are_numbered_and_name_their_source(env):
+    d1 = _forward_and_get_draft(env, "Is the hall booked for Saturday?")
+    assert d1["text"].startswith("Draft #1 (stub")
+    assert 'Re: "Is the hall booked for Saturday?"' in d1["text"]
+    d2 = _next_message(env, "Can I borrow the projector?", forward=FWD_USER)
+    assert d2["text"].startswith("Draft #2 (stub") and 'Re: "Can I borrow the projector?"' in d2["text"]
+
+
+def test_source_reference_is_masked_and_never_cut_through_a_token(env):
+    long_text = "Hello there friend, please call me urgently on " + RAW_PHONE + " about the club trip"
+    d = _forward_and_get_draft(env, long_text)
+    assert RAW_PHONE not in d["text"]
+    for partial in ("[PHO", "[PHONE", "[EMA"):
+        assert partial not in d["text"].replace("[PHONE]", "").replace("[EMAIL]", "")
+
+
+def test_snippet_helper():
+    from app.drafting.base import snippet
+    assert snippet("short  text\nhere", 40) == "short text here"
+    assert snippet("x" * 100, 10) == "x" * 10 + "..."
+    cut = snippet("abcdefghi [PHONE] and more words", 14)  # limit lands inside the token
+    assert cut == "abcdefghi..." and "[" not in cut
+
+
+def test_tapping_a_button_rewrites_the_draft_with_what_happened(env):
+    draft = _forward_and_get_draft(env)
+    mid = _record(env)["message_id"]
+    handle_update(_cb(f"sent:{mid}", draft["id"], text=draft["text"]), env)
+    chat_id, msg_id, new_text = env.fake.edited[-1]
+    assert (chat_id, msg_id) == (CHAT, draft["id"])
+    assert new_text.endswith("✓ Recorded: sent as is") and fmt.REPLY_HINT not in new_text
+    assert new_text.startswith(draft["text"][: -len(fmt.REPLY_HINT)].rstrip())  # same draft, hint swapped
+
+    d2 = _next_message(env, "Another one", forward=FWD_USER)
+    handle_update(_cb(f"disc:{_record(env)['message_id']}", d2["id"], text=d2["text"]), env)
+    assert env.fake.edited[-1][2].endswith("Discarded: not sent")
+
+
+def test_status_edit_falls_back_to_removing_buttons(env):
+    draft = _forward_and_get_draft(env)
+    mid = _record(env)["message_id"]
+    env.fake.fail_edit = True
+    handle_update(_cb(f"sent:{mid}", draft["id"], text=draft["text"]), env)  # edit refused by Telegram
+    assert (CHAT, draft["id"]) in env.fake.cleared and _record(env, mid)["outcome"] == "sent_as_is"
+    d2 = _next_message(env, "second", forward=FWD_USER)
+    handle_update(_cb(f"disc:{_record(env)['message_id']}", d2["id"]), env)  # no text supplied at all
+    assert (CHAT, d2["id"]) in env.fake.cleared and _record(env)["outcome"] == "discarded"
+
+
+def test_reply_confirmation_and_blind_release_name_the_draft_number(env):
+    d1 = _forward_and_get_draft(env)
+    d2 = _next_message(env, "second", forward=FWD_USER)
+    handle_update(_msg("my final answer", reply_to=d2["id"]), env)
+    assert env.fake.sent[-1]["text"] == "Saved #2: edited before sending."
+    env.rng = lambda: 0.0
+    env.clock.advance(seconds=1)
+    handle_update(_msg("third", forward=FWD_USER), env)
+    handle_update(_msg("blind answer", reply_to=env.fake.sent[-1]["id"]), env)
+    assert env.fake.sent[-1]["text"].startswith("Here's the draft I held back for #3:")
+    assert d1  # first draft untouched and still open
+
+
+def test_pending_lists_what_is_waiting_by_number(env):
+    handle_update(_msg("/pending"), env)
+    assert env.fake.sent[-1]["text"] == fmt.NOTHING_WAITING
+    d1 = _forward_and_get_draft(env, "Question one")
+    d2 = _next_message(env, "Question two", forward=FWD_USER)
+    _next_message(env, "Question three", forward=FWD_USER)
+    handle_update(_msg("/pending"), env)
+    text = env.fake.sent[-1]["text"]
+    assert text.splitlines()[0] == "3 waiting for you:"
+    assert '#1 · "Question one"' in text and '#2 · "Question two"' in text and '#3 · "Question three"' in text
+    handle_update(_cb(f"disc:{_record(env, None)['message_id']}", 0), env)  # closes #3 (newest)
+    env.clock.advance(seconds=1)
+    handle_update(_msg("/pending"), env)
+    text = env.fake.sent[-1]["text"]
+    assert text.splitlines()[0] == "2 waiting for you:" and "Question three" not in text
+    assert d1 and d2
+
+
+def test_pending_marks_blind_items_without_revealing_the_draft(env):
+    env.rng = lambda: 0.0
+    handle_update(_msg("Is the hall free?", forward=FWD_USER), env)
+    held = _record(env)["draft_text"]
+    handle_update(_msg("/pending"), env)
+    text = env.fake.sent[-1]["text"]
+    assert '#1 · "Is the hall free?" (my draft is held back)' in text and held not in text
+
+
+def test_nudge_when_a_plain_message_arrives_while_one_is_open(env):
+    _forward_and_get_draft(env, "Is the hall booked?")           # forwarded: never nudged
+    env.clock.advance(seconds=1)
+    handle_update(_msg("Yes, it is"), env)                        # pasted while #1 is open
+    nudge = env.fake.sent[-1]["text"]
+    assert nudge == fmt.nudge(1) and "#1" in nudge and "treated that as a new message" in nudge
+    assert env.fake.sent[-2]["text"].startswith("Draft #2")       # the draft still arrived first
+    assert len(_events(env, "message_received")) == 2             # and it really was handled as new
+
+
+def test_no_nudge_when_nothing_is_open_or_when_forwarding(env):
+    handle_update(_msg("first pasted message"), env)              # nothing open yet
+    assert not any("treated that as a new message" in s["text"] for s in env.fake.sent)
+    handle_update(_cb(f"disc:{_record(env)['message_id']}", env.fake.sent[-1]["id"]), env)
+    env.clock.advance(seconds=1)
+    handle_update(_msg("second pasted message"), env)             # first one is closed
+    assert not any("treated that as a new message" in s["text"] for s in env.fake.sent)
+    env.clock.advance(seconds=1)
+    handle_update(_msg("forwarded while open", forward=FWD_USER), env)
+    assert not any("treated that as a new message" in s["text"] for s in env.fake.sent)
+
+
+def test_nudge_also_fires_for_a_blind_item_and_names_it(env):
+    env.rng = lambda: 0.0
+    handle_update(_msg("blind one", forward=FWD_USER), env)
+    env.clock.advance(seconds=1)
+    handle_update(_msg("Yes, correct"), env)                      # the exact mistake seen in manual testing
+    assert env.fake.sent[-1]["text"] == fmt.nudge(1)
+
+
+def test_help_explains_how_to_reply(env):
+    handle_update(_msg("/help"), env)
+    text = env.fake.sent[-1]["text"]
+    assert "swipe" in text and "right-click" in text and "plain message is always treated as a new message" in text
+
+
+# ---------------------------------------------------------------- capture window is fixed per message
+def test_capture_deadline_is_fixed_when_the_message_arrives(env, monkeypatch):
+    _forward_and_get_draft(env)                                  # created under the 24 h window
+    mid = _record(env)["message_id"]
+    monkeypatch.setenv("TELEGRAM_CAPTURE_WINDOW_HOURS", "0.02")  # window shortened afterwards
+    get_settings.cache_clear()
+    env.settings = get_settings()
+    env.clock.advance(hours=2)
+    assert sweep_expired(env) == 0 and _record(env, mid)["outcome"] == "waiting"  # old message keeps 24 h
+    _next_message(env, "new message", forward=FWD_USER)          # created under the short window
+    env.clock.advance(minutes=5)
+    assert sweep_expired(env) == 1
+    env.clock.advance(hours=23)
+    assert sweep_expired(env) == 1 and _record(env, mid)["outcome"] == "unknown"
+
+
+# ---------------------------------------------------------------- real client: edit call, token safety
+def test_real_client_edit_call_shape_and_error_safety():
+    import httpx
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, json.loads(request.content)))
+        if request.url.path.endswith("/editMessageText") and seen[-1][1]["text"] == "boom":
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: message is not modified"})
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    c = TelegramClient("123:SECRET-TOKEN", "http://tg.invalid")
+    c._http = httpx.Client(transport=httpx.MockTransport(handler))
+    c.edit_message_text(7, 8, "new text")
+    path, body = seen[-1]
+    assert path == "/bot123:SECRET-TOKEN/editMessageText"
+    assert body == {"chat_id": 7, "message_id": 8, "text": "new text", "disable_web_page_preview": True,
+                    "reply_markup": {"inline_keyboard": []}}
+    with pytest.raises(TelegramError) as ei:
+        c.edit_message_text(7, 8, "boom")
+    assert "not modified" in str(ei.value) and "SECRET-TOKEN" not in str(ei.value)
 
 
 @pytest.fixture
