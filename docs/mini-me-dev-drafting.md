@@ -66,6 +66,8 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 | Provider / model | **Not chosen yet.** Set by `LLM_PROVIDER` / `LLM_MODEL` (Fly secrets), recorded per draft as `provider` and `model`. No model name is in code. |
 | Provider terms check | **Still open** (5.16 pt 2, needed before M2). Record provider, plan, date here when done: _pending Braj_ |
 
+Pre-release edit (7 Nov, before any deploy or real run, so still `v0.1`): prompts made pronoun-neutral and the drafter told to mirror the message's language and script (the real sample is Hinglish in Roman letters). From the first real run on, a prompt change means a new version folder.
+
 Prompts are files in the repo; never edit a released version in place, copy to `drafter-v0.2` and change `PROMPT_VERSION` (see `prompts/README.md`).
 
 ## 6. The LLM guard and own-data mode (decision-adjacent, FLAGGED)
