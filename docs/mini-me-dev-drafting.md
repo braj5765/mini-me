@@ -1,6 +1,6 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **171 tests passing on SQLite** (93 earlier + 78 new). **Not yet run against a real model or on Fly** (see section 9)._
+_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **171 tests passing on SQLite** (93 earlier + 78 new). pushed to `main` (commit `80ff7ff`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
@@ -93,7 +93,7 @@ Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DA
 **Not measured with a real model.** This session has no provider key and no route to Telegram or Fly, so no real timings or quality notes exist yet. What was run:
 - **Local pipeline smoke test (29 made-up messages, own seed file):** bot webhook logic, masking, self-model retrieval, the real `openai_compat` HTTP adapter and the real drafter against a **local fake model server** (answers after 50 ms). Median 86 ms, max 127 ms per message including the fake 50 ms, so the app's own overhead is about 35 ms. 29 of 29 drafted with `is_stub=false`, tokens kept, 6 held as blind (about 1 in 5), 23 shown. This says nothing about model quality or real model speed.
 - **Target:** a draft in a few seconds. Expected cost drivers: one model call (500 max output tokens) plus the Telegram round trip; a Fly cold start adds a few seconds on the first message after idle. Every draft logs `llm_ms` (model time) and `gen_latency_ms` (whole drafter step) in `draft_generated`, so real timings are read from the event log after the first real run.
-- **To do (Braj):** (1) seed; (2) set secrets, deploy; (3) forward the made-up messages in `seed/made_up_messages.txt` (28 messages, includes a phone, an email, a pseudonym, a money request, a message that tries to give the drafter instructions) to the bot; or run `python -m scripts.run_made_up_batch seed/made_up_messages.txt` for model-only timings and a table of drafts. Then note timings and quality here (quality notes only, no accuracy claims).
+- **To do (Braj):** (1) seed; (2) set secrets, deploy; (3) forward the made-up messages in `seed/made_up_messages.txt` (29 messages, includes a phone, an email, a pseudonym, a money request, a message that tries to give the drafter instructions) to the bot; or run `python -m scripts.run_made_up_batch seed/made_up_messages.txt` for model-only timings and a table of drafts. Then note timings and quality here (quality notes only, no accuracy claims).
 
 ## 10. Deploy steps (for Braj; no Fly access from this session)
 
