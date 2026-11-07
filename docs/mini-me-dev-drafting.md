@@ -1,6 +1,6 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **174 tests passing on SQLite** (93 earlier + 81 new). pushed to `main` (commit `80ff7ff`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
+_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **174 tests passing on SQLite** (93 earlier + 81 new). pushed to `main` (latest `b9a7892`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
@@ -74,7 +74,7 @@ Prompts are files in the repo; never edit a released version in place, copy to `
 
 ## 6. The LLM guard and own-data mode (decision-adjacent, FLAGGED)
 
-- `app/llm/base.py` is **unchanged**: all provider flags are still `no_training_verified=False`, and a test asserts it.
+- The **guard logic in `app/llm/base.py` is unchanged** (8 Nov: only the `openai_compat` request body and error text changed, see section 5): all provider flags are still `no_training_verified=False`, and a test asserts it.
 - The drafter calls with `contains_third_party_text=True` by default, so with a real unverified provider and **no** mode set, drafting is **refused** (test with the real Gemini client: nothing is sent; user sees the "provider is not approved" line).
 - `OWN_DATA_ONLY_MODE=true` (Fly secret / env, default false): the drafter declares the text own or made-up (`contains_third_party_text=False`). Every draft logs `data_mode` (`own_or_made_up` or `third_party_guarded`), the app warns at startup, and the setting is documented as v0.1-only.
 - **Risk to know:** with the mode on, anything you forward goes to the provider whatever it is. Forward only your own or made-up messages (5.16 pt 2, 5.14).
@@ -85,7 +85,7 @@ Prompts are files in the repo; never edit a released version in place, copy to `
 New: `app/selfmodel/{__init__,store,seed}.py`, `app/drafting/{llm_drafter,factory,tokens,prompts_loader}.py`, `app/drafting/prompts/{drafter-v0.1,seeder-v0.1}/*.md`, `scripts/seed_self_model.py`, `scripts/run_made_up_batch.py`, `seed/{own_lines.example.txt,made_up_messages.txt}`, `tests/test_selfmodel.py`, `tests/test_drafter.py`.
 Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DATA_ONLY_MODE`), `app/drafting/base.py` (+`DraftResult.meta`, `DraftError`), `app/telegram/bot.py` (failure path, audit fields), `app/telegram/format.py` (`draft_failed`), `app/telegram/router.py` (`build_drafter`), `pyproject.toml` (prompt files packaged; checked in a built wheel), `.gitignore` (`seed/*` private), `.env.example`.
 
-## 8. Tests (78 new, 171 total, all passing on SQLite)
+## 8. Tests (81 new, 174 total, all passing on SQLite)
 
 - **Self-model CRUD (25):** schema columns, add / get / list / count, edit bumps version, archive keeps the row, bad layer / empty / too long refused, text masked, version tag, retrieval (small store whole, large trimmed, notes before examples).
 - **Seeding from own lines only:** parsing; examples and notes with sources; model sees only own text and the call is declared own text; **chat export refused**; too few lines refused; masked before storage and before the model; no-model path; re-run dedupe; `--replace` archives only seed items (manual survive); bad model JSON stops cleanly.
