@@ -8,3 +8,8 @@ __pycache__/
 *.sqlite
 .pytest_cache/
 .coverage
+
+# Your own sent messages for seeding: private, never committed
+seed/*
+!seed/*.example.txt
+!seed/made_up_messages.txt

@@ -1,0 +1,27 @@
+# EXAMPLE ONLY - made-up lines so the seeding script can be tried. Replace with your own sent messages in
+# seed/own_lines.txt (git-ignored). One message per block, blocks separated by a blank line.
+# Only YOUR lines. Do not paste a chat export with other people's messages.
+
+yes bro i'll be there at 5, bring the banner
+
+can't make it this friday, exams. send me the minutes later?
+
+Hi Riya, the auditorium is booked for the 14th. Will confirm the time by tonight.
+
+haha sure, count me in 👍
+
+not sure about the budget yet, let me check with the treasurer and get back
+
+registrations close on sunday night, please share the form in the group
+
+yep, I'll handle the posters. will send drafts by wednesday
+
+sorry, missed this. can we do saturday morning instead?
+
+thanks! see everyone at 4
+
+no worries, I'll take the mic and the speakers
+
+ok done, shared the form. pls fill it today
+
+let's keep it short this time, 20 mins max

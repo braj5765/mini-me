@@ -48,6 +48,18 @@ class DraftResult:
     drafter: str = "unknown"    # name, e.g. "stub"
     drafter_version: str = "0"
     is_stub: bool = False       # the bot labels stub drafts clearly in the DM
+    # Extra audit fields merged into the `draft_generated` payload (prompt_version, provider, model,
+    # llm_ms, self_model_version, data_mode ...). Ids and numbers only; no message text.
+    meta: dict = field(default_factory=dict)
+
+
+class DraftError(RuntimeError):
+    """The drafter could not produce a draft. `reason` is a short code for the event log; the bot tells the
+    user plainly and records the message as outcome unknown (never as a draft)."""
+
+    def __init__(self, reason: str, message: str = ""):
+        super().__init__(message or reason)
+        self.reason = reason
 
 
 class Drafter(Protocol):

@@ -24,7 +24,7 @@ from typing import Any, Callable
 from sqlalchemy.engine import Engine
 
 from app.config import Settings
-from app.drafting.base import DraftRequest, Drafter
+from app.drafting.base import DraftError, DraftRequest, Drafter
 from app.events import EventName, EventWriter
 from app.events.writer import make_key
 from app.privacy.masking import EMAIL_TOKEN, PHONE_TOKEN, mask_text, pseudonymise
@@ -261,9 +261,13 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
     prev_open = deps.store.latest_open(chat_id) if kind == "pasted" else None  # for the nudge, see below
 
     t0 = time.monotonic()
-    result = deps.drafter.draft(DraftRequest(
-        message_id=mid, masked_text=masked, channel=CHANNEL, domain=DOMAIN,
-        contact_type=contact_type, contact_pseudonym=pseud))
+    try:
+        result = deps.drafter.draft(DraftRequest(
+            message_id=mid, masked_text=masked, channel=CHANNEL, domain=DOMAIN,
+            contact_type=contact_type, contact_pseudonym=pseud))
+    except Exception as e:  # noqa: BLE001  (DraftError or anything unexpected: tell the user, never score it)
+        _draft_failed(deps, mid, chat_id, m["message_id"], e, common)
+        return
     gen_ms = int((time.monotonic() - t0) * 1000)
 
     blind = deps.rng() < deps.settings.telegram_blind_ratio
@@ -276,10 +280,11 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
     )
     deps.writer.log(
         EventName.draft_generated, message_id=mid,
-        payload={"items_used": [i.__dict__ for i in result.items_used], "drafter": result.drafter,
+        payload={**result.meta,
+                 "items_used": [i.__dict__ for i in result.items_used], "drafter": result.drafter,
                  "drafter_version": result.drafter_version, "is_stub": result.is_stub,
                  "confidence": result.confidence, "gen_latency_ms": gen_ms, "shown_state": shown_state},
-        **common,
+        **{**common, "self_model_version": result.meta.get("self_model_version")},
     )
 
     now = deps.now()
@@ -310,6 +315,20 @@ def _ingest_incoming(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
             deps.client.send_message(chat_id, fmt.nudge(deps.store.number_of(chat_id, prev_open["message_id"])))
         except Exception:  # noqa: BLE001
             log.warning("could not send the nudge")
+
+
+def _draft_failed(deps: BotDeps, mid: str, chat_id: int, incoming_tg_id: int, err: Exception, common: dict) -> None:
+    """The drafter could not draft (e.g. provider not approved, model down, unusable output). Say so plainly,
+    keep no draft, and record the message as outcome unknown: never scored, never counted as an accept."""
+    reason = err.reason if isinstance(err, DraftError) else "error"
+    log.warning("drafter failed: %s", reason)  # reason code only; never the message text
+    deps.writer.upsert_message(mid, outcome="unknown")
+    deps.writer.log(EventName.outcome_unknown, message_id=mid,
+                    payload={"reason": "draft_failed", "draft_error": reason}, **common)
+    try:
+        deps.client.send_message(chat_id, fmt.draft_failed(reason), reply_to_message_id=incoming_tg_id)
+    except Exception:  # noqa: BLE001
+        log.warning("could not send the draft-failed note")
 
 
 # --------------------------------------------------------------------------- capture

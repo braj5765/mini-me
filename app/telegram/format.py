@@ -32,6 +32,18 @@ STATUS_SENT = "✓ Recorded: sent as is"
 STATUS_DISCARDED = "Discarded: not sent"
 
 
+_DRAFT_FAILED_REASONS = {
+    "provider_not_verified": "the model provider is not approved for this kind of text yet",
+    "llm_error": "the model could not be reached",
+    "bad_output": "the model's answer was not usable",
+}
+
+
+def draft_failed(reason: str) -> str:
+    why = _DRAFT_FAILED_REASONS.get(reason, "something went wrong")
+    return f"I couldn't draft this one: {why}. Nothing was saved as a draft. Reply yourself if you like."
+
+
 def confidence_label(c: float) -> str:
     return "High" if c >= 0.75 else "Medium" if c >= 0.5 else "Low"
 

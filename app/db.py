@@ -91,6 +91,26 @@ telegram_threads = Table(
 )
 
 
+# Self-model (D6a). Three layers: voice, decision, fact. One row per item. All text is stored MASKED.
+# D6b is additive: it adds `self_model_item_versions` (item_id + version -> old text, who, when) and a
+# snapshot table; this table already has `status` (active | archived, so nothing is hard-deleted) and
+# `version` (bumped on every text change), so no column here has to change.
+self_model_items = Table(
+    "self_model_items", metadata,
+    Column("item_id", String(32), primary_key=True),       # e.g. sm_3fa91c2b7d
+    Column("user_id", String(64), nullable=False),
+    Column("layer", String(16), nullable=False),          # voice | decision | fact
+    Column("text", Text, nullable=False),                 # masked
+    Column("source", String(32), nullable=False),         # seed_own_line | seed_own_lines | manual | ...
+    Column("source_ref", String(200)),                    # e.g. the seed file name; never message text
+    Column("status", String(12), nullable=False, default="active"),  # active | archived
+    Column("version", Integer, nullable=False, default=1),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index("ix_selfmodel_layer_status", "layer", "status"),
+)
+
+
 @lru_cache
 def get_engine() -> Engine:
     return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True, future=True)
