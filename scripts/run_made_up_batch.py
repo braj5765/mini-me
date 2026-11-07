@@ -27,10 +27,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--out")
-    ap.add_argument("--delay", type=float, default=0.0,
-                    help="seconds to wait between messages (free tiers: try 8 to stay under per-minute token caps)")
-    ap.add_argument("--pause", type=float, default=0.0,
-                    help="seconds to wait between messages (free tiers have per-minute token limits)")
+    ap.add_argument("--pause", "--delay", dest="pause", type=float, default=0.0,
+                    help="seconds to wait between messages (free tiers have per-minute token limits; Groq: 20)")
+    ap.add_argument("--only", help="comma-separated message numbers to run, e.g. 7,8,10 (re-run failures)")
+    ap.add_argument("--rate-limit-wait", type=float, default=30.0,
+                    help="seconds to wait and retry (up to 3 times) when the provider answers 429")
     a = ap.parse_args(argv)
 
     s = get_settings()
@@ -42,15 +43,28 @@ def main(argv: list[str] | None = None) -> int:
     drafter = LLMDrafter(get_llm(), store, settings=s)
     msgs = parse_own_lines(Path(a.file).read_text(encoding="utf-8-sig"))
 
-    rows, times = [], []
+    only = {int(x) for x in a.only.split(",") if x.strip()} if a.only else None
+    rows, times, first = [], [], True
     for n, raw in enumerate(msgs, 1):
-        if n > 1 and a.pause:
+        if only is not None and n not in only:
+            continue
+        if not first and a.pause:
             time.sleep(a.pause)
+        first = False
         masked = mask_text(raw)
         t0 = time.monotonic()
         try:
-            r = drafter.draft(DraftRequest(f"batch-{n}", masked, "telegram", "group_queries", "new_group",
-                                           pseudonymise(f"batch-{n}@batch.invalid")))
+            req = DraftRequest(f"batch-{n}", masked, "telegram", "group_queries", "new_group",
+                               pseudonymise(f"batch-{n}@batch.invalid"))
+            for attempt in range(4):
+                try:
+                    r = drafter.draft(req)
+                    break
+                except DraftError as e:
+                    if e.reason != "rate_limited" or attempt == 3:
+                        raise
+                    print(f"#{n}: rate limit, waiting {a.rate_limit_wait:.0f}s (retry {attempt + 1}/3)", file=sys.stderr)
+                    time.sleep(a.rate_limit_wait)
             ms = int((time.monotonic() - t0) * 1000)
             times.append(ms)
             used = ",".join(f"{i.layer[0].upper()}:{i.item_id[-4:]}" for i in r.items_used) or "-"

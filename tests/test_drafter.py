@@ -469,3 +469,38 @@ def test_http_errors_report_the_status_code_but_never_the_key(monkeypatch):
     with pytest.raises(LLMError) as e:
         llm_base._post("https://example.invalid/v1", {"Authorization": "Bearer SECRETKEY"}, {})
     assert "HTTP 429" in str(e.value) and "SECRETKEY" not in str(e.value) and "example.invalid" not in str(e.value)
+
+
+def test_batch_runner_pauses_retries_on_429_and_can_rerun_only_some(engine, tmp_path, monkeypatch, capsys):
+    from scripts import run_made_up_batch as rb
+
+    monkeypatch.setenv("OWN_DATA_ONLY_MODE", "true")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{tmp_path}/b.db")
+    get_settings.cache_clear()
+    from app import db as _db
+    _db.get_engine.cache_clear()
+    _db.init_db()
+
+    class Flaky(ScriptedLLM):
+        def __init__(self):
+            super().__init__(ok())
+            self.n = 0
+
+        def complete(self, *a, **k):
+            self.n += 1
+            if self.n == 1:
+                raise LLMError("LLM request failed: HTTPStatusError (HTTP 429)")
+            return super().complete(*a, **k)
+
+    llm = Flaky()
+    monkeypatch.setattr(rb, "get_llm", lambda: llm)
+    sleeps = []
+    monkeypatch.setattr(rb.time, "sleep", lambda s: sleeps.append(s))
+    f = tmp_path / "m.txt"
+    f.write_text("one\n\ntwo\n\nthree\n", encoding="utf-8")
+    out = tmp_path / "r.md"
+    assert rb.main([str(f), "--out", str(out), "--pause", "20", "--only", "1,3", "--rate-limit-wait", "7"]) == 0
+    text = out.read_text(encoding="utf-8-sig")
+    assert "FAILED" not in text and "one" in text and "three" in text and "| 2 |" not in text
+    assert sleeps == [7.0, 20.0]  # one 429 wait, one pause between the two messages
+    _db.get_engine.cache_clear()
