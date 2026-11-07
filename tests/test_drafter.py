@@ -91,7 +91,7 @@ def test_unknown_or_repeated_item_labels_are_dropped(store, own_mode):
 def test_audit_meta_has_versions_provider_model_timing(store, own_mode):
     r = make(ScriptedLLM(ok()), store).draft(_req())
     m = r.meta
-    assert m["prompt_version"] == "drafter-v0.1" and m["provider"] == "fake" and m["model"] == "fake-model-1"
+    assert m["prompt_version"] == PROMPT_VERSION == "drafter-v0.2" and m["provider"] == "fake" and m["model"] == "fake-model-1"
     assert m["confidence_method"] == "conf-0.1" and isinstance(m["llm_ms"], int) and m["retries"] == 0
     assert m["self_model_version"] == store.version_tag() and m["data_mode"] == "own_or_made_up"
     assert set(m["retrieved"]) == {"voice", "decision", "fact"}
@@ -322,6 +322,7 @@ def test_factory_stub_override_and_missing_config_error(engine, monkeypatch):
 def test_prompt_files_exist_and_use_no_gate_wording():
     root = Path(llm_drafter.__file__).parent / "prompts"
     for f in [root / "drafter-v0.1" / "system.md", root / "drafter-v0.1" / "user.md",
+              root / "drafter-v0.2" / "system.md", root / "drafter-v0.2" / "user.md",
               root / "seeder-v0.1" / "system.md", root / "seeder-v0.1" / "user.md"]:
         assert f.exists()
     rule_7 = re.search(r"7\. .*", load_prompt(PROMPT_VERSION, "system")).group(0)
@@ -353,7 +354,7 @@ def test_draft_generated_event_logs_versions_items_and_not_stub(bot):
     _forward_and_get_draft(bot)
     ev = _events(bot, "draft_generated")[0]
     p = ev["payload"]
-    assert p["is_stub"] is False and p["prompt_version"] == "drafter-v0.1" and p["drafter"] == "llm"
+    assert p["is_stub"] is False and p["prompt_version"] == PROMPT_VERSION and p["drafter"] == "llm"
     assert p["provider"] == "fake" and p["model"] == "fake-model-1" and p["data_mode"] == "own_or_made_up"
     assert p["items_used"] and "item_id" in p["items_used"][0] and p["llm_ms"] >= 0
     assert ev["self_model_version"].startswith("sm-0.1-")
@@ -504,3 +505,11 @@ def test_batch_runner_pauses_retries_on_429_and_can_rerun_only_some(engine, tmp_
     assert "FAILED" not in text and "one" in text and "three" in text and "| 2 |" not in text
     assert sleeps == [7.0, 20.0]  # one 429 wait, one pause between the two messages
     _db.get_engine.cache_clear()
+
+
+def test_v02_prompt_forbids_claiming_actions_and_keeps_v01_unchanged():
+    v2 = load_prompt("drafter-v0.2", "system")
+    assert "never say something is already done" in v2 and "Read who is doing what" in v2
+    assert "Do not use the words unlock, gate or level up" in v2
+    v1 = load_prompt("drafter-v0.1", "system")
+    assert "never say something is already done" not in v1  # released versions stay immutable
