@@ -35,6 +35,7 @@ STATUS_DISCARDED = "Discarded: not sent"
 _DRAFT_FAILED_REASONS = {
     "provider_not_verified": "the model provider is not approved for this kind of text yet",
     "llm_error": "the model could not be reached",
+    "rate_limited": "the model's free limit was reached; try again in a minute",
     "bad_output": "the model's answer was not usable",
 }
 

@@ -106,7 +106,7 @@ def test_prompt_carries_notes_message_and_call_settings(store, own_mode):
     assert "Says yes to quick favours" in user_msg and "Is on the club committee" in user_msg
     assert "<incoming_message>\nCan you take the mic on the 14th?\n</incoming_message>" in user_msg
     assert re.search(r"- V\d+: ", user_msg) and "- D1: " in user_msg and "- F1: " in user_msg
-    assert call["max_tokens"] == 500 and call["temperature"] == 0.5
+    assert call["max_tokens"] == 1000 and call["temperature"] == 0.5
 
 
 def test_empty_self_model_still_drafts_and_says_nothing_yet(engine, own_mode):
@@ -398,3 +398,53 @@ def test_capture_still_works_with_a_real_draft(bot):
     handle_update(_cb(f"sent:{_record(bot)['message_id']}", sent["id"], text=sent["text"]), bot)
     rec = _record(bot)
     assert rec["outcome"] == "sent_as_is" and rec["scorable"] is True
+
+
+# ---------------------------------------------------------------- openai_compat adapter details
+def _compat_post(monkeypatch, store_body, reply=None, status=None):
+    class Resp:
+        def __init__(self): self.status_code = status or 200
+        def raise_for_status(self):
+            if status:
+                import httpx
+                raise httpx.HTTPStatusError("x", request=None, response=self)
+        def json(self): return {"choices": [{"message": {"content": reply}}]}
+
+    def fake_post(url, headers, json, timeout=None):  # noqa: A002
+        store_body.update(json)
+        return Resp()
+
+    monkeypatch.setattr(llm_base.httpx, "post", fake_post)
+
+
+def test_reasoning_effort_is_sent_only_when_set(monkeypatch):
+    monkeypatch.setenv("OPENAI_COMPAT_BASE_URL", "http://x/v1")
+    body = {}
+    _compat_post(monkeypatch, body, reply="hi")
+    get_settings.cache_clear()
+    llm_base.OpenAICompatClient("m")._call([llm_base.Message("user", "q")], 10, 0.1)
+    assert "reasoning_effort" not in body
+    monkeypatch.setenv("OPENAI_COMPAT_REASONING_EFFORT", "low")
+    get_settings.cache_clear()
+    llm_base.OpenAICompatClient("m")._call([llm_base.Message("user", "q")], 10, 0.1)
+    assert body["reasoning_effort"] == "low"
+
+
+def test_empty_model_content_becomes_a_clean_bad_output(store, own_mode, monkeypatch):
+    monkeypatch.setenv("OPENAI_COMPAT_BASE_URL", "http://x/v1")
+    get_settings.cache_clear()
+    _compat_post(monkeypatch, {}, reply=None)
+    with pytest.raises(DraftError) as e:
+        make(llm_base.OpenAICompatClient("m"), store).draft(_req())
+    assert e.value.reason == "bad_output"
+
+
+def test_http_429_is_reported_as_rate_limited_without_leaking(store, own_mode, monkeypatch):
+    monkeypatch.setenv("OPENAI_COMPAT_BASE_URL", "http://x/v1")
+    monkeypatch.setenv("OPENAI_COMPAT_API_KEY", "sk-secret-123")
+    get_settings.cache_clear()
+    _compat_post(monkeypatch, {}, status=429)
+    with pytest.raises(DraftError) as e:
+        make(llm_base.OpenAICompatClient("m"), store).draft(_req())
+    assert e.value.reason == "rate_limited" and "sk-secret" not in str(e.value)
+    assert "limit" in fmt.draft_failed("rate_limited")

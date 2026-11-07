@@ -27,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--out")
+    ap.add_argument("--pause", type=float, default=0.0,
+                    help="seconds to wait between messages (free tiers have per-minute token limits)")
     a = ap.parse_args(argv)
 
     s = get_settings()
@@ -40,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
 
     rows, times = [], []
     for n, raw in enumerate(msgs, 1):
+        if n > 1 and a.pause:
+            time.sleep(a.pause)
         masked = mask_text(raw)
         t0 = time.monotonic()
         try:

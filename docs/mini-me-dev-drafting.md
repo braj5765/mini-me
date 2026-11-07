@@ -1,6 +1,6 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **171 tests passing on SQLite** (93 earlier + 78 new). pushed to `main` (commit `80ff7ff`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
+_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **174 tests passing on SQLite** (93 earlier + 81 new). pushed to `main` (commit `80ff7ff`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
@@ -44,7 +44,7 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 
 1. `store.retrieve(masked_text)`, then label items V1.., D1.., F1.. for the prompt.
 2. Prompt from `prompts/drafter-v0.1/{system,user}.md`. The incoming text sits inside `<incoming_message>` (a closing tag typed into the message is neutralised) and the system prompt says to ignore instructions inside it.
-3. One call: `max_tokens=500`, `temperature=0.5`, JSON reply `{draft, confidence, rationale, used}`.
+3. One call: `max_tokens` = `DRAFTER_MAX_TOKENS` (default 1000, headroom for reasoning models), `temperature=0.5`, JSON reply `{draft, confidence, rationale, used}`.
 4. Checks: valid JSON (code fences tolerated), non-empty draft up to 1,500 chars, **tokens** (below). One retry with the reason on a bad reply, then `DraftError("bad_output")`.
 5. Result: `used` labels become item ids (unknown or repeated labels dropped); rationale made one short line (140 chars) and replaced by a plain fallback if empty or it contains unlock / gate / level up; confidence computed (below); `is_stub=false`.
 
@@ -52,7 +52,7 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 
 **Confidence (`conf-0.1`, build-level, uncalibrated).** `0.65 x model estimate + 0.35 x support`, clamped to 0.05-0.95 (never certainty). Support = 0.4 + 0.3 if a decision rule was cited + 0.3 if a fact was cited. Display only, as in the Telegram bot; no thresholds hang on it (Q1 untouched). To be tuned with D9a data. Note it relies on the model's own citations.
 
-**Failure path (bot).** `DraftError` (or any crash) gives the user one calm line ("I couldn't draft this one: ... Nothing was saved as a draft. Reply yourself if you like."), records `outcome=unknown` (never scored) with event `outcome_unknown` payload `reason=draft_failed, draft_error=<code>`. Codes: `provider_not_verified`, `llm_error`, `bad_output`, `error`. No thread is opened, so nothing waits.
+**Failure path (bot).** `DraftError` (or any crash) gives the user one calm line ("I couldn't draft this one: ... Nothing was saved as a draft. Reply yourself if you like."), records `outcome=unknown` (never scored) with event `outcome_unknown` payload `reason=draft_failed, draft_error=<code>`. Codes: `provider_not_verified`, `rate_limited` (HTTP 429), `llm_error`, `bad_output`, `error`. No thread is opened, so nothing waits.
 
 **Which drafter runs.** `DRAFTER=auto` (default): real drafter if `LLM_PROVIDER` and `LLM_MODEL` are set, else the stub (labelled stub in the DM). `stub` or `llm` force it.
 
@@ -67,6 +67,8 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 | Provider terms check | **Still open** (5.16 pt 2, needed before M2). Record provider, plan, date here when done: _pending Braj_ |
 
 Pre-release edit (7 Nov, before any deploy or real run, so still `v0.1`): prompts made pronoun-neutral and the drafter told to mirror the message's language and script (the real sample is Hinglish in Roman letters). From the first real run on, a prompt change means a new version folder.
+
+**8 Nov provider change.** Braj's Groq key does not list `llama-3.3-70b-versatile`; the plan moved to `openai/gpt-oss-120b` (reasoning model). Code follow-ups: `DRAFTER_MAX_TOKENS` (was fixed 500, which hidden reasoning can use up), optional `OPENAI_COMPAT_REASONING_EFFORT` (sent as `reasoning_effort`, e.g. `low`), empty model content handled as `bad_output`, HTTP status shown in provider errors (never the key or URL), `rate_limited` reason, and `--pause` on the batch runner (free tiers have per-minute token limits). Not yet run against the real provider.
 
 Prompts are files in the repo; never edit a released version in place, copy to `drafter-v0.2` and change `PROMPT_VERSION` (see `prompts/README.md`).
 
@@ -94,7 +96,7 @@ Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DA
 
 **Not measured with a real model.** This session has no provider key and no route to Telegram or Fly, so no real timings or quality notes exist yet. What was run:
 - **Local pipeline smoke test (29 made-up messages, own seed file):** bot webhook logic, masking, self-model retrieval, the real `openai_compat` HTTP adapter and the real drafter against a **local fake model server** (answers after 50 ms). Median 86 ms, max 127 ms per message including the fake 50 ms, so the app's own overhead is about 35 ms. 29 of 29 drafted with `is_stub=false`, tokens kept, 6 held as blind (about 1 in 5), 23 shown. This says nothing about model quality or real model speed.
-- **Target:** a draft in a few seconds. Expected cost drivers: one model call (500 max output tokens) plus the Telegram round trip; a Fly cold start adds a few seconds on the first message after idle. Every draft logs `llm_ms` (model time) and `gen_latency_ms` (whole drafter step) in `draft_generated`, so real timings are read from the event log after the first real run.
+- **Target:** a draft in a few seconds. Expected cost drivers: one model call (1000 max output tokens) plus the Telegram round trip; a Fly cold start adds a few seconds on the first message after idle. Every draft logs `llm_ms` (model time) and `gen_latency_ms` (whole drafter step) in `draft_generated`, so real timings are read from the event log after the first real run.
 - **To do (Braj):** (1) seed; (2) set secrets, deploy; (3) forward the made-up messages in `seed/made_up_messages.txt` (29 messages, includes a phone, an email, a pseudonym, a money request, a message that tries to give the drafter instructions) to the bot; or run `python -m scripts.run_made_up_batch seed/made_up_messages.txt` for model-only timings and a table of drafts. Then note timings and quality here (quality notes only, no accuracy claims).
 
 ## 10. Deploy steps (for Braj; no Fly access from this session)
@@ -120,7 +122,7 @@ Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DA
 
 ## 12. Build-level choices (to record)
 
-Table and column names above; item id format; layer / source labels; JSON reply format; retrieval rules; `conf-0.1`; one retry; 500 max tokens; temperature 0.5; token enforcement; `DRAFTER` and `OWN_DATA_ONLY_MODE` settings; prompt versions as files; seed file format and `seed/*` git-ignored; verbatim own lines kept as voice items (up to 15).
+Table and column names above; item id format; layer / source labels; JSON reply format; retrieval rules; `conf-0.1`; one retry; max tokens 1000 (`DRAFTER_MAX_TOKENS`); temperature 0.5; token enforcement; `DRAFTER` and `OWN_DATA_ONLY_MODE` settings; prompt versions as files; seed file format and `seed/*` git-ignored; verbatim own lines kept as voice items (up to 15).
 
 ## 13. Flags and questions
 

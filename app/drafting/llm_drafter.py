@@ -30,7 +30,6 @@ log = logging.getLogger("minime.drafter")
 PROMPT_VERSION = "drafter-v0.1"
 CONFIDENCE_METHOD = "conf-0.1"
 DRAFTER_NAME = "llm"
-MAX_TOKENS = 500
 TEMPERATURE = 0.5
 MAX_DRAFT_CHARS = 1500
 MAX_RATIONALE_CHARS = 140
@@ -143,10 +142,12 @@ class LLMDrafter:
         last_problem = ""
         while True:
             try:
-                raw = self.llm.complete(messages, max_tokens=MAX_TOKENS, temperature=TEMPERATURE,
+                raw = self.llm.complete(messages, max_tokens=self.settings.drafter_max_tokens, temperature=TEMPERATURE,
                                         contains_third_party_text=not own_mode)
             except LLMError as e:
-                reason = "provider_not_verified" if "no-training" in str(e) else "llm_error"
+                msg = str(e)
+                reason = ("provider_not_verified" if "no-training" in msg
+                          else "rate_limited" if "429" in msg else "llm_error")
                 raise DraftError(reason, str(e)) from None
             try:
                 text, data = self._validate(raw, allowed)

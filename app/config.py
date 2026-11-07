@@ -21,9 +21,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_compat_api_key: str = ""
     openai_compat_base_url: str = ""
+    # Optional: sent as "reasoning_effort" to openai_compat endpoints (e.g. "low" for Groq's gpt-oss models).
+    openai_compat_reasoning_effort: str = ""
 
     # Drafting (D8a). "auto" = the real drafter when LLM_PROVIDER and LLM_MODEL are set, else the stub.
     drafter: str = "auto"                  # auto | llm | stub
+    # Output ceiling for one draft. Reasoning models spend part of it on hidden thinking, so keep headroom.
+    drafter_max_tokens: int = 1000
     # v0.1 only (decision given 7 Nov 2026): the drafter declares the incoming text to be own / made-up, so
     # an unverified provider may be used. Off by default. Does NOT touch the guard in app/llm/base.py.
     # Remove before real third-party messages (D3b / M2).

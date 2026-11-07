@@ -73,7 +73,9 @@ def _post(url: str, headers: dict, json: dict) -> dict:
         r.raise_for_status()
         return r.json()
     except httpx.HTTPError as e:
-        raise LLMError(f"LLM request failed: {type(e).__name__}") from None  # never echo key/URL
+        status = getattr(getattr(e, "response", None), "status_code", None)  # status code is safe to show
+        detail = f" (HTTP {status})" if status else ""
+        raise LLMError(f"LLM request failed: {type(e).__name__}{detail}") from None  # never echo key/URL
 
 
 class GeminiClient(_Base):
@@ -132,9 +134,11 @@ class OpenAICompatClient(_Base):
         headers = {"Authorization": f"Bearer {s.openai_compat_api_key}"} if s.openai_compat_api_key else {}
         body = {"model": self.model, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": m.role, "content": m.content} for m in messages]}
+        if s.openai_compat_reasoning_effort:
+            body["reasoning_effort"] = s.openai_compat_reasoning_effort
         data = _post(s.openai_compat_base_url.rstrip("/") + "/chat/completions", headers, body)
         try:
-            return data["choices"][0]["message"]["content"]
+            return data["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError):
             raise LLMError("Unexpected response shape") from None
 
