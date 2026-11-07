@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        lines = parse_own_lines(Path(a.file).read_text(encoding="utf-8"))
+        lines = parse_own_lines(Path(a.file).read_text(encoding="utf-8-sig"))
         llm = None if a.no_llm else get_llm()
         print(seed_self_model(store, lines, llm=llm, source_ref=Path(a.file).name, replace=a.replace))
     except (SelfModelError, LLMError, OSError) as e:

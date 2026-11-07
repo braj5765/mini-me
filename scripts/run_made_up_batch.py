@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     engine = db.get_engine()
     store = SelfModelStore(engine)
     drafter = LLMDrafter(get_llm(), store, settings=s)
-    msgs = parse_own_lines(Path(a.file).read_text(encoding="utf-8"))
+    msgs = parse_own_lines(Path(a.file).read_text(encoding="utf-8-sig"))
 
     rows, times = [], []
     for n, raw in enumerate(msgs, 1):
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                    f"provider={drafter.llm.provider} model={drafter.llm.model}; self-model {store.version_tag()}")
     text = "\n".join(out)
     if a.out:
-        Path(a.out).write_text(text, encoding="utf-8")
+        Path(a.out).write_text(text, encoding="utf-8-sig")
     print(text)
     return 0
 
