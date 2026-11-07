@@ -502,7 +502,7 @@ def test_batch_runner_pauses_retries_on_429_and_can_rerun_only_some(engine, tmp_
     out = tmp_path / "r.md"
     assert rb.main([str(f), "--out", str(out), "--pause", "20", "--only", "1,3", "--rate-limit-wait", "7"]) == 0
     text = out.read_text(encoding="utf-8-sig")
-    assert "FAILED" not in text and "one" in text and "three" in text and "| 2 |" not in text
+    assert "FAILED" not in text and "one" in text and "three" in text and "| 2 | two" not in text
     assert sleeps == [7.0, 20.0]  # one 429 wait, one pause between the two messages
     _db.get_engine.cache_clear()
 

@@ -206,3 +206,19 @@ def test_overlong_or_wrong_typed_notes_are_skipped(store):
     llm = FakeLLM({"voice": ["ok", "x" * 500, 5], "decisions": "not a list", "facts": []})
     res = seed_self_model(store, OWN, llm=llm)
     assert res["voice"] == 1
+
+
+def test_cli_add_edit_archive(engine, monkeypatch):
+    from scripts import seed_self_model as cli
+
+    monkeypatch.setattr(cli.db, "get_engine", lambda: engine)
+
+    assert cli.main(["--add", "decision", "Ask which date before agreeing to a call."]) == 0
+    store = SelfModelStore(engine)
+    item = store.list_items("decision")[0]
+    assert item["source"] == "manual"
+    assert cli.main(["--edit", item["item_id"], "Ask which date first. Call me on 9876543210"]) == 0
+    assert "[PHONE]" in store.get(item["item_id"])["text"]  # masked like every other item
+    assert cli.main(["--archive", item["item_id"]]) == 0
+    assert store.list_items("decision") == []
+    assert cli.main(["--archive", "sm_nope"]) == 1
