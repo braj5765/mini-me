@@ -124,7 +124,7 @@ def seed_self_model(store: SelfModelStore, own_lines: list[str], *, llm: LLMClie
         raw = llm.complete(
             [Message("system", load_prompt(SEEDER_VERSION, "system")),
              Message("user", render(load_prompt(SEEDER_VERSION, "user"), lines="\n".join(sample)))],
-            max_tokens=900, temperature=0.2,
+            max_tokens=3000, temperature=0.2,
             contains_third_party_text=False,  # own lines only: enforced above, never other people's text
         )
         notes = _parse_notes(raw)

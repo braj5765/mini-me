@@ -27,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file")
     ap.add_argument("--out")
+    ap.add_argument("--delay", type=float, default=0.0,
+                    help="seconds to wait between messages (free tiers: try 8 to stay under per-minute token caps)")
     ap.add_argument("--pause", type=float, default=0.0,
                     help="seconds to wait between messages (free tiers have per-minute token limits)")
     a = ap.parse_args(argv)
@@ -54,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             used = ",".join(f"{i.layer[0].upper()}:{i.item_id[-4:]}" for i in r.items_used) or "-"
             rows.append((n, masked, r.text, f"{r.confidence:.2f}", r.rationale, used, ms, r.meta.get("retries", 0)))
         except DraftError as e:
+            print(f"#{n} failed: {e}", file=sys.stderr)
             rows.append((n, masked, f"FAILED ({e.reason})", "-", "-", "-", int((time.monotonic() - t0) * 1000), 0))
 
     def esc(x):

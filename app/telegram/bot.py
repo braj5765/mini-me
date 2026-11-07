@@ -321,7 +321,8 @@ def _draft_failed(deps: BotDeps, mid: str, chat_id: int, incoming_tg_id: int, er
     """The drafter could not draft (e.g. provider not approved, model down, unusable output). Say so plainly,
     keep no draft, and record the message as outcome unknown: never scored, never counted as an accept."""
     reason = err.reason if isinstance(err, DraftError) else "error"
-    log.warning("drafter failed: %s", reason)  # reason code only; never the message text
+    # Reason code plus the drafter's own short note (HTTP status or what was wrong with the output); never message text.
+    log.warning("drafter failed: %s %s", reason, str(err)[:200] if isinstance(err, DraftError) else "")
     deps.writer.upsert_message(mid, outcome="unknown")
     deps.writer.log(EventName.outcome_unknown, message_id=mid,
                     payload={"reason": "draft_failed", "draft_error": reason}, **common)

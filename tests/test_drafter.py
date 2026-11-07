@@ -448,3 +448,24 @@ def test_http_429_is_reported_as_rate_limited_without_leaking(store, own_mode, m
         make(llm_base.OpenAICompatClient("m"), store).draft(_req())
     assert e.value.reason == "rate_limited" and "sk-secret" not in str(e.value)
     assert "limit" in fmt.draft_failed("rate_limited")
+
+
+def test_reply_cap_is_a_setting(store, own_mode, monkeypatch):
+    monkeypatch.setenv("DRAFTER_MAX_TOKENS", "2500")
+    get_settings.cache_clear()
+    llm = ScriptedLLM(ok())
+    make(llm, store).draft(_req())
+    assert llm.calls[0]["max_tokens"] == 2500
+
+
+def test_http_errors_report_the_status_code_but_never_the_key(monkeypatch):
+    import httpx
+
+    def fake_post(url, headers, json, timeout=None):  # noqa: A002
+        req = httpx.Request("POST", url)
+        raise httpx.HTTPStatusError("x", request=req, response=httpx.Response(429, request=req))
+
+    monkeypatch.setattr(llm_base.httpx, "post", fake_post)
+    with pytest.raises(LLMError) as e:
+        llm_base._post("https://example.invalid/v1", {"Authorization": "Bearer SECRETKEY"}, {})
+    assert "HTTP 429" in str(e.value) and "SECRETKEY" not in str(e.value) and "example.invalid" not in str(e.value)
