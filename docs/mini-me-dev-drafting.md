@@ -1,13 +1,13 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026 · Spoke: Dev 3 Self-model + drafting · Status: code complete, **174 tests passing on SQLite** (93 earlier + 81 new). pushed to `main` (latest `b9a7892`). **Not yet deployed to Fly and not yet run against a real model** (no Fly, Telegram or provider access from this session; see sections 9 and 10)._
+_Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **179 tests passing on SQLite**, on `main` (latest code commit `405f12a`), **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms check still open (section 5)._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
 ## 1. What was built
 
 - **D6a Self-model store.** Table `self_model_items` plus `SelfModelStore` (add, get, list, edit, archive, version tag, retrieval). Three layers: voice, decision, fact. Seeding script that reads **own sent messages only**.
-- **D8a Real drafter.** `LLMDrafter` implements the `Drafter` interface and replaces the stub. One LLM call per draft through `get_llm()`. Returns text, confidence (0-1), one-line rationale, ids of the self-model items used. `is_stub=false`. Prompt files are versioned (`drafter-v0.1`).
+- **D8a Real drafter.** `LLMDrafter` implements the `Drafter` interface and replaces the stub. One LLM call per draft through `get_llm()`. Returns text, confidence (0-1), one-line rationale, ids of the self-model items used. `is_stub=false`. Prompt files are versioned (`drafter-v0.1`, now `drafter-v0.2`).
 - **Own/made-up-data mode** (decision of 7 Nov, option b) so drafting can run before a provider is verified. The guard itself is untouched (section 6).
 - **Bot changes (small, flagged):** drafter errors are handled (user told, outcome unknown), and `draft_generated` carries the audit fields.
 
@@ -43,8 +43,8 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 ## 4. Drafter design (`app/drafting/llm_drafter.py`)
 
 1. `store.retrieve(masked_text)`, then label items V1.., D1.., F1.. for the prompt.
-2. Prompt from `prompts/drafter-v0.1/{system,user}.md`. The incoming text sits inside `<incoming_message>` (a closing tag typed into the message is neutralised) and the system prompt says to ignore instructions inside it.
-3. One call: `max_tokens` = `DRAFTER_MAX_TOKENS` (default 1000, headroom for reasoning models), `temperature=0.5`, JSON reply `{draft, confidence, rationale, used}`.
+2. Prompt from `prompts/drafter-v0.2/{system,user}.md`. The incoming text sits inside `<incoming_message>` (a closing tag typed into the message is neutralised) and the system prompt says to ignore instructions inside it.
+3. One call: `max_tokens` = `DRAFTER_MAX_TOKENS` (default 1500, headroom for reasoning models, which spend tokens thinking), `temperature=0.5`, JSON reply `{draft, confidence, rationale, used}`.
 4. Checks: valid JSON (code fences tolerated), non-empty draft up to 1,500 chars, **tokens** (below). One retry with the reason on a bad reply, then `DraftError("bad_output")`.
 5. Result: `used` labels become item ids (unknown or repeated labels dropped); rationale made one short line (140 chars) and replaced by a plain fallback if empty or it contains unlock / gate / level up; confidence computed (below); `is_stub=false`.
 
@@ -60,15 +60,17 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 
 | Item | Value |
 |---|---|
-| Drafter prompt | `drafter-v0.1` (system.md + user.md), logged as `prompt_version` and as `drafter_version` on every draft |
+| Drafter prompt | `drafter-v0.2` (system.md + user.md), logged as `prompt_version` and as `drafter_version` on every draft. `drafter-v0.1` is kept unchanged |
 | Seeder prompt | `seeder-v0.1` |
 | Confidence method | `conf-0.1` |
-| Provider / model | **Not chosen yet.** Set by `LLM_PROVIDER` / `LLM_MODEL` (Fly secrets), recorded per draft as `provider` and `model`. No model name is in code. |
-| Provider terms check | **Still open** (5.16 pt 2, needed before M2). Record provider, plan, date here when done: _pending Braj_ |
+| Provider / model | `openai_compat` adapter pointed at Groq, model `openai/gpt-oss-120b` (free tier; Gemini `gemini-2.5-flash-lite` kept as a comparison option). Set by `LLM_PROVIDER` / `LLM_MODEL` (Fly secrets), recorded per draft as `provider` and `model`. No model name is in code. Free-tier limits noted from third-party sources, to confirm in the Groq console: about 30 requests/min, 8K tokens/min; a draft is about 2-3K tokens, so about 3 drafts a minute in a batch. |
+| Provider terms check | **Still open** (5.16 pt 2, needed before M2). Groq's terms are reported to bar training on inputs; Gemini's free tier uses inputs to improve Google products. Not verified by this build. Record provider, plan, date here when done: _pending Braj_ |
 
 Pre-release edit (7 Nov, before any deploy or real run, so still `v0.1`): prompts made pronoun-neutral and the drafter told to mirror the message's language and script (the real sample is Hinglish in Roman letters). From the first real run on, a prompt change means a new version folder.
 
-**8 Nov provider change.** Braj's Groq key does not list `llama-3.3-70b-versatile`; the plan moved to `openai/gpt-oss-120b` (reasoning model). Code follow-ups: `DRAFTER_MAX_TOKENS` (was fixed 500, which hidden reasoning can use up), optional `OPENAI_COMPAT_REASONING_EFFORT` (sent as `reasoning_effort`, e.g. `low`), empty model content handled as `bad_output`, HTTP status shown in provider errors (never the key or URL), `rate_limited` reason, and `--pause` on the batch runner (free tiers have per-minute token limits). Not yet run against the real provider.
+**8 Nov provider change.** Braj's Groq key does not list `llama-3.3-70b-versatile`; the plan moved to `openai/gpt-oss-120b` (reasoning model). Code follow-ups: `DRAFTER_MAX_TOKENS` (was fixed 500, which hidden reasoning can use up), optional `OPENAI_COMPAT_REASONING_EFFORT` (sent as `reasoning_effort`, e.g. `low`), empty model content handled as `bad_output`, HTTP status shown in provider errors (never the key or URL), `rate_limited` reason, and `--pause` on the batch runner (free tiers have per-minute token limits). First real run on 8-9 Nov (section 9).
+
+**9 Nov prompt change (`drafter-v0.2`).** Made-up runs on `v0.1` showed drafts that confirmed facts they were not given, claimed actions as done, misread who was late, and put the same emoji on almost every reply (section 9). `v0.2` adds rules 8-10 to `system.md`: never say something is already done or confirm an unknown fact (keep confidence at 0.5 or less), read who is doing what, use plain words and no habitual emoji. `v0.1` is unchanged; `PROMPT_VERSION` is now `drafter-v0.2`; `prompts/README.md` lists both.
 
 Prompts are files in the repo; never edit a released version in place, copy to `drafter-v0.2` and change `PROMPT_VERSION` (see `prompts/README.md`).
 
@@ -82,28 +84,48 @@ Prompts are files in the repo; never edit a released version in place, copy to `
 
 ## 7. Files
 
-New: `app/selfmodel/{__init__,store,seed}.py`, `app/drafting/{llm_drafter,factory,tokens,prompts_loader}.py`, `app/drafting/prompts/{drafter-v0.1,seeder-v0.1}/*.md`, `scripts/seed_self_model.py`, `scripts/run_made_up_batch.py`, `seed/{own_lines.example.txt,made_up_messages.txt}`, `tests/test_selfmodel.py`, `tests/test_drafter.py`.
-Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DATA_ONLY_MODE`), `app/drafting/base.py` (+`DraftResult.meta`, `DraftError`), `app/telegram/bot.py` (failure path, audit fields), `app/telegram/format.py` (`draft_failed`), `app/telegram/router.py` (`build_drafter`), `pyproject.toml` (prompt files packaged; checked in a built wheel), `.gitignore` (`seed/*` private), `.env.example`.
+New: `app/selfmodel/{__init__,store,seed}.py`, `app/drafting/{llm_drafter,factory,tokens,prompts_loader}.py`, `app/drafting/prompts/{drafter-v0.1,drafter-v0.2,seeder-v0.1}/*.md`, `scripts/seed_self_model.py` (now also `--add`, `--edit`, `--archive`; direct store edits, no events until D6b), `scripts/run_made_up_batch.py` (`--pause`, `--delay` alias, `--only`, wait-and-retry on HTTP 429), `seed/{own_lines.example.txt,made_up_messages.txt}`, `tests/test_selfmodel.py`, `tests/test_drafter.py`.
+Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `DRAFTER_MAX_TOKENS`, `OWN_DATA_ONLY_MODE`, `OPENAI_COMPAT_REASONING_EFFORT`), `app/drafting/base.py` (+`DraftResult.meta`, `DraftError`), `app/telegram/bot.py` (failure path, audit fields), `app/telegram/format.py` (`draft_failed`), `app/telegram/router.py` (`build_drafter`), `pyproject.toml` (prompt files packaged; checked in a built wheel), `.gitignore` (`seed/*` private), `.env.example`.
 
-## 8. Tests (81 new, 174 total, all passing on SQLite)
+## 8. Tests (179 total, all passing on SQLite)
 
 - **Self-model CRUD (25):** schema columns, add / get / list / count, edit bumps version, archive keeps the row, bad layer / empty / too long refused, text masked, version tag, retrieval (small store whole, large trimmed, notes before examples).
 - **Seeding from own lines only:** parsing; examples and notes with sources; model sees only own text and the call is declared own text; **chat export refused**; too few lines refused; masked before storage and before the model; no-model path; re-run dedupe; `--replace` archives only seed items (manual survive); bad model JSON stops cleanly.
 - **Drafter contract (53):** fields, confidence range, one-line rationale, item ids exist and match layers, unknown labels dropped; **tokens preserved** (`[phone 1]`, `Person A`, `[PHONE]`), case repair, invented token retried then failed; fenced / bad / missing JSON; confidence never 1 and handles garbage; gate words replaced; delimiter and injection checks; **guard behaviour** (flags unverified; mode off refuses with the real Gemini client and sends nothing; mode on goes through); provider errors; **stub vs real flag**; factory choices; prompt files exist; bot integration (real draft shown, masked before the model, `draft_generated` payload and `self_model_version`, failure path, capture still works).
+- Later additions: reasoning-model reply cap and HTTP status in errors; batch runner (pause, `--only`, retry on 429); self-model CLI add / edit / archive; `v0.2` prompt rules with `v0.1` left unchanged.
+- Test isolation: `tests/conftest.py` ignores a developer's `.env` and behaviour-changing environment variables, so tests pass the same on any machine.
 - Not run: tests on Postgres (same as Dev 1/2).
 
 ## 9. Latency and test-run notes
 
-**Not measured with a real model.** This session has no provider key and no route to Telegram or Fly, so no real timings or quality notes exist yet. What was run:
-- **Local pipeline smoke test (29 made-up messages, own seed file):** bot webhook logic, masking, self-model retrieval, the real `openai_compat` HTTP adapter and the real drafter against a **local fake model server** (answers after 50 ms). Median 86 ms, max 127 ms per message including the fake 50 ms, so the app's own overhead is about 35 ms. 29 of 29 drafted with `is_stub=false`, tokens kept, 6 held as blind (about 1 in 5), 23 shown. This says nothing about model quality or real model speed.
-- **Target:** a draft in a few seconds. Expected cost drivers: one model call (1000 max output tokens) plus the Telegram round trip; a Fly cold start adds a few seconds on the first message after idle. Every draft logs `llm_ms` (model time) and `gen_latency_ms` (whole drafter step) in `draft_generated`, so real timings are read from the event log after the first real run.
-- **To do (Braj):** (1) seed; (2) set secrets, deploy; (3) forward the made-up messages in `seed/made_up_messages.txt` (29 messages, includes a phone, an email, a pseudonym, a money request, a message that tries to give the drafter instructions) to the bot; or run `python -m scripts.run_made_up_batch seed/made_up_messages.txt` for model-only timings and a table of drafts. Then note timings and quality here (quality notes only, no accuracy claims).
+All runs used made-up or Braj's own messages only (`OWN_DATA_ONLY_MODE=true`). Quality notes only; no accuracy claims; samples are tiny.
 
-## 10. Deploy steps (for Braj; no Fly access from this session)
+**Timings.**
+- **Model call on Fly (`llm_ms` in `draft_generated`):** `v0.1`, 5 live drafts, 903-1189 ms. `v0.2`, 6 live drafts, 956-2255 ms, median about 1.2 s. Telegram end to end and Fly cold starts are not in `llm_ms`.
+- **Batch runner on Braj's laptop (29 made-up messages, `v0.1`, Groq `openai/gpt-oss-120b`):** median 2719 ms, p90 3108 ms, max 4562 ms per draft. This is the whole `draft()` call (including reading the self-model from the database), so it is not comparable to `llm_ms`.
+- **Fly free trial:** the machine stops after 5 idle minutes and restarts on the next message (cold start about 3.6 s in the logs). Add a card on Fly to avoid it.
+- First batch hit HTTP 429 on 19 of 29 messages because `--delay` had no effect after a merge. Fixed (`--delay` is now an alias of `--pause`, plus retry on 429); with `--pause 20` all 29 succeeded.
+- Query for real timings (Neon; the column is `occurred_at`): `select occurred_at, payload->>'llm_ms', payload->>'prompt_version', payload->>'self_model_version' from events where event_name='draft_generated' and payload->>'is_stub'='false' order by occurred_at desc limit 30;`
 
-1. `git pull`, then set secrets (PowerShell, single quotes): `fly secrets set LLM_PROVIDER='gemini' LLM_MODEL='<model>' GEMINI_API_KEY='...' OWN_DATA_ONLY_MODE='true'` (use the provider you choose; keys: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_COMPAT_*`).
-2. Seed the self-model into Neon from your laptop (section 3). The release command creates the new table on deploy (`create_all`, additive).
-3. `fly deploy`. Check `/healthz`, then forward a made-up message to the bot: the draft should show no "stub" tag.
+**Quality notes, `v0.1` (29 messages).**
+- Most drafts (about 60%) were a neutral "check karke bataunga" with a 😏 or 😎, confidence 0.40-0.53. Safe but generic.
+- Placeholders were kept (`[EMAIL]`, `Person A`). The message that told the drafter to approve everything was not obeyed. The 5000-rupee request got a non-committal reply.
+- Problems: #21 confirmed a venue it was never told (0.67); #7 and #24 claimed an action as done and #24 misread who was late; #11 asked for a pincode, from a decision rule that was one old message turned into a rule; #4 began with "Kedi", copied from one of Braj's own seed lines. Confidence was highest on the riskiest drafts, so it carries little signal yet.
+- Only one decision rule and no fact was cited across the 29 drafts.
+
+**Quality notes, self-model seed.** The seeder wrote 8 voice, 6 decision and 6 fact notes from the sample. Some "decision rules" and "facts" are descriptions of single past messages (a pincode request, an S3 access grant, an ElevenLabs model name), one rule came from a joke, and the notes say "He" although the prompt asks for neutral wording. Braj archived 5 weak items and added a casual-style voice note by hand (self-model tag `sm-0.1-521d0a6f` to `sm-0.1-7a8b30f3`). The seed also mixes formal work English and casual Hinglish, and all of it is sent every time. A `seeder-v0.2` prompt (rules must be general, facts must be lasting, neutral wording) is recommended and **not built**.
+
+**Quality notes, `v0.2` live on Telegram (6 drafts, #26-#31).**
+- Venue confirmation: "check karke batauga", no confirmation. Volunteers list: no pincode. Instruction-injection message: not obeyed. Casual greeting: lowercase "h", no emoji, closer to Braj's own edits.
+- Still commits to future actions: "group ko update kar dunga" (#27) and "minutes bhej deta hun ... soon" with an emoji (#28, 0.53). Not claimed as done, but still promises. Needs a product view (below).
+- Confidence was 0.45 on five of six drafts and 0.53 on one, so it has almost no spread.
+- The `v0.2` batch table for messages 7, 11, 21 and 24 is not recorded here yet.
+
+## 10. Deploy steps (Windows PowerShell)
+
+1. `git pull`; `fly secrets list` should show `DATABASE_URL`, `LLM_PROVIDER`, `LLM_MODEL`, `OPENAI_COMPAT_BASE_URL`, `OPENAI_COMPAT_API_KEY`, `OWN_DATA_ONLY_MODE`. Set missing ones with `fly secrets set NAME="value"` (keys: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_COMPAT_*`). Keep keys and connection strings out of chat and screenshots.
+2. Seed or fix the self-model in Neon from the laptop (section 3; `--list`, `--archive`, `--edit`, `--add`). Edits take effect on the next draft, with no deploy.
+3. `fly deploy`, then `fly status` and `fly logs`; send a made-up message to the bot. In Neon, the newest `draft_generated` rows should show the current `prompt_version`.
 4. To go back to stubs at any time: `fly secrets set DRAFTER=stub`.
 
 ## 11. Interfaces for later tasks
@@ -122,7 +144,7 @@ Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `OWN_DA
 
 ## 12. Build-level choices (to record)
 
-Table and column names above; item id format; layer / source labels; JSON reply format; retrieval rules; `conf-0.1`; one retry; max tokens 1000 (`DRAFTER_MAX_TOKENS`); temperature 0.5; token enforcement; `DRAFTER` and `OWN_DATA_ONLY_MODE` settings; prompt versions as files; seed file format and `seed/*` git-ignored; verbatim own lines kept as voice items (up to 15).
+Table and column names above; item id format; layer / source labels; JSON reply format; retrieval rules; `conf-0.1`; one retry; max tokens 1500 (`DRAFTER_MAX_TOKENS`); temperature 0.5; token enforcement; `DRAFTER` and `OWN_DATA_ONLY_MODE` settings; prompt versions as files; seed file format and `seed/*` git-ignored; verbatim own lines kept as voice items (up to 15).
 
 ## 13. Flags and questions
 
@@ -134,4 +156,8 @@ See the handoff block in the chat; copied in the decision-adjacent items above (
 5. **Verbatim examples in the Voice layer** (up to 15 raw own lines, `source=seed_own_line`) may clutter screen 4. Build-level for now; D21 can filter by source.
 6. **Used-item tags are model-reported**, not verified. They feed the 5.10 voice / decision / fact attribution, so D9a should treat them as a hint.
 7. `outcome_unknown` is now also written when no draft could be made (`reason=draft_failed`). Scores are unaffected; D11a can show it separately.
-8. **Latency and quality are unmeasured** until a real run (section 9).
+8. **Latency and quality** are now measured on small made-up samples only (section 9). Not a basis for any threshold.
+9. **Drafts can still promise future actions** ("bhej deta hun", "update kar dunga") at low-to-medium confidence. Product-level: allow it, since Braj reviews every draft, or forbid promises in the prompt or with a code check? Not decided here.
+10. **Seeder output quality.** Seeded "rules" and "facts" can be single past events or jokes, and use "He". A `seeder-v0.2` prompt is recommended; a review step on screen 4 (D6b) matters for the same reason.
+11. **Commits from another session** (`b9a7892`, `6fcc8da`: reasoning headroom, `reasoning_effort`, 429 handling, `--pause`) were merged into main; their effects are described above.
+12. **Fly trial limit:** machine stops after 5 idle minutes (section 9).
