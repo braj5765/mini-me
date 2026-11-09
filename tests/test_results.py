@@ -190,7 +190,7 @@ def test_events_by_number_shows_every_step_without_message_text(engine, writer):
                payload={"edit_class": "decision", "classes": ["decision", "voice"], "method": "llm",
                         "never_light": True, "model_reason": "SECRET-REASON"})
     out = events_text(engine, {"m1": 1}, {1: "m1"}.get, "1")
-    assert out.startswith("Draft #1 - every step (UTC):")
+    assert out.startswith("Draft #1 - every step (IST):")
     assert "draft_generated" in out and "draft_acted" in out and "edit_classified" in out
     assert "class=decision all=decision+voice method=llm never light" in out
     assert "SECRET-SENT-WORDS" not in out and "SECRET-REASON" not in out and "can you come friday" not in out

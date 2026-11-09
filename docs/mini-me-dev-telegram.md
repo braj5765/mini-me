@@ -1,6 +1,6 @@
 # Mini Me — Dev 2: Telegram bot (D4a, v0.1 part)
 
-_Built 3 Nov 2026, UX build 7 Nov 2026 · Spoke: Dev 2 Telegram bot · Status: **deployed on Fly (mini-me.fly.dev) and tested by Braj on real Telegram, 6 Nov**; 93 tests passing on SQLite (38 foundation + 55 for the bot). First build on 3 Nov; the 7 Nov build adds the chat-clarity changes from that testing (section 4a)._
+_Built 3 Nov 2026, UX build 7 Nov 2026 · Spoke: Dev 2 Telegram bot · Status: **deployed on Fly (mini-me.fly.dev) and tested by Braj on real Telegram, 6 Nov**; 93 tests passing on SQLite (38 foundation + 55 for the bot). First build on 3 Nov; the 7 Nov build adds the chat-clarity changes from that testing (section 4a). **Updated 9 Nov (Dev 5, v0.1 fix batch):** the classifier hook's one-line note, `CLASSIFIER_NOTIFY`, `/stats` and `/events` are now live in the bot (section 12); `/events` shows IST. These supersede the stub wording elsewhere in this doc._
 
 Source of truth: decisions 5.7, 5.7a (Telegram note), 5.13 pts 1–3 and 6, 5.14, 5.15 pt 3, 5.16; foundation doc; timeline section 3 (v0.1 rules). Where the PRD differs, decisions win.
 
@@ -36,7 +36,9 @@ The drafter is a **stub** (fixed template, no model call). D8a replaces it. Ever
 | Reply to a draft with text | Records that text as what he sent (an unchanged text counts as as-is). "Reply" = Telegram's own feature: swipe the draft left on a phone, or right-click it and choose Reply on a computer |
 | `/sent <text>` | Same, but for the **newest** waiting message (no Reply needed). Careful: a plain message you just sent is itself the newest one |
 | `/pending` | Lists what is waiting: `#4 · "re: first 40 characters (masked)"`; blind items marked "(my draft is held back)" without showing the draft |
-| `/stats` | Stub: "Stats are coming soon…" (D11a) |
+| `/stats` | Counts, edit-class mix, shown vs blind, north star as a labelled range (D11a, built 9 Nov; see section 12). Was a stub in the first build |
+| `/events` | Latest 12 steps from the event log, oldest first, times in IST (section 12) |
+| `/events N` | Every step of draft #N, times in IST. Shows versions, counts and labels only, never message text |
 | `/help`, `/start` | Short usage text |
 
 Copy follows design-core: calm, no "unlock / gate / level up" (there is a test for it).
@@ -72,13 +74,18 @@ class Drafter(Protocol):
 # A drafter that calls a model must use app.llm.get_llm() with contains_third_party_text=True.
 
 # D9a: after every captured sent text. Pass it in get_bot_deps(): on_captured=your_function
-def on_captured(message_id: str, capture: str) -> None   # capture = "button" | "reply_text"
+def on_captured(message_id: str, capture: str) -> str | None   # capture = "button" | "reply_text"
+# (9 Nov) A returned non-empty string is sent to the chat as a one-line note; None = say nothing (section 12).
 # Read message_records (draft_text, sent_text), then write edit_class + classifier_version on the record and
 # log edit_classified (once per message). NOT called for discards. The bot leaves edit_class empty today
 # (even for sent-as-is), so D9a owns it entirely and no event/record mismatch can arise.
 
 # D11a: /stats. Pass stats_provider=your_function in get_bot_deps()
 def stats_provider(deps: BotDeps) -> str     # return the reply text; deps.writer / deps.engine give data access
+
+# D11a (9 Nov): /events and /events N. Pass events_provider=your_function in get_bot_deps()
+def events_provider(deps: BotDeps, arg: str, chat_id) -> str   # arg = text after the command ("" or "7" or "#7")
+# deps.store.numbers(chat_id) gives {message_id: draft number}; the default is a stub text until wired.
 ```
 
 `BotDeps` also injects `client`, `rng`, `now`, so tests (and D10) can drive time and the blind dice. D10 (full shadow logic) can reuse `shown_state`, the thread store and the events above.
@@ -98,6 +105,7 @@ def stats_provider(deps: BotDeps) -> str     # return the reply text; deps.write
 | `TELEGRAM_CAPTURE_WINDOW_HOURS` | `24` | **Placeholder**; no capture inside it = outcome unknown |
 | `TELEGRAM_SWEEP_MINUTES` | `10` | Background sweep interval while awake |
 | `TELEGRAM_API_BASE` | `https://api.telegram.org` | Only changed in tests / fakes |
+| `CLASSIFIER_NOTIFY` | `true` | (9 Nov, classifier setting that changes what the bot says) `false` = no "Edit read as ..." note after an edit; the classifier still runs and logs. Set with `fly secrets set CLASSIFIER_NOTIFY=false` |
 
 ## 7. How to run and test
 
@@ -142,7 +150,7 @@ Local end-to-end without Telegram: run the app with the Telegram env vars set an
 
 ## 10. Not done / deferred
 
-Real drafting (D8a), classifier (D9a), `/stats` content (D11a), self-model, extended masking (D3b, 5.16: names, IDs, addresses, URLs are still **not** masked), 7-day purge job (D3b), full shadow logic and `autonomy_decision` events (D10), "Not me" chips (F7), Gmail, web UI, real third-party data.
+_(Real drafting D8a, the classifier D9a and `/stats` content D11a were built after this doc: see section 12.)_ Self-model editing screens, extended masking (D3b, 5.16: names, IDs, addresses, URLs are still **not** masked), 7-day purge job (D3b), full shadow logic and `autonomy_decision` events (D10), "Not me" chips (F7), Gmail, web UI, real third-party data.
 
 ## 11. Flags and questions (not decided here)
 
@@ -152,10 +160,37 @@ Real drafting (D8a), classifier (D9a), `/stats` content (D11a), self-model, exte
 4. **Own replies are stored masked.** Phones and emails he types in his own reply become `[PHONE]` / `[EMAIL]` (follows "never store raw unmasked text", 5.14 pt 2). Consequence: a fact edit that only changes such a value is invisible to the classifier. 5.13 says own replies are kept; confirm masking them is intended.
 5. **Outcome-unknown timing.** With scale-to-zero the sweep runs only when the machine is awake (and on the next update). Scores are unaffected (a waiting message is unscored too), only the `outcome_unknown` row appears late. Fix later if needed with `min_machines_running = 1` or an external cron on `/telegram/sweep`.
 6. **Blind messages cannot be skipped on purpose.** No reply simply expires to unknown after 24 h, so "I chose not to answer" and "I forgot" look the same. Fine for now.
-7. **Edit class for sent-as-is is left to D9a** (so `/stats` cannot count classes until then). `autonomy_decision` events are left to D10/D22.
+7. **Edit class for sent-as-is is left to D9a** (so `/stats` cannot count classes until then). `autonomy_decision` events are left to D10/D22. _(9 Nov: D9a now sets class `none` for sent-as-is and logs `edit_classified`; `autonomy_decision` events are still not logged.)_
 8. **Timeline note:** D4a is done in about the planned scope; webhook auto-registration and the thread table were small additions (about 1–2 h inside D4a's 7 h). No date change.
 9. _(Fixed 7 Nov)_ The stub quote could be cut through a `[PHONE]` token; shortened quotes now drop a partial token.
 10. `device_type` is NULL for Telegram (foundation example suggested `mobile`). Only matters if M11 should count Telegram.
 11. **Stub test rows are mixed with future data.** Every `draft_generated` event from this bot carries `payload.is_stub = true`. D9a / D11a must exclude those (or the rows must be cleared) before real dogfood numbers are read, otherwise stub accepts and discards will pollute the as-is / edit rates. Test rows from 6 Nov (19) are all stub rows.
 12. **Edits to your own messages are ignored** (the bot does not subscribe to edited messages). The way to correct a final text is to Reply to the draft with it.
 13. **Blind ratio and capture window can be changed without code** (`fly secrets set TELEGRAM_BLIND_RATIO=1` forces every draft blind; `TELEGRAM_CAPTURE_WINDOW_HOURS=0.02` is about a minute). Useful for testing; set back to `0.2` and `24` afterwards. A forgotten short window would expire real messages in about a minute.
+
+## 12. Updates since the first build (Dev 4, 9 Nov; documented in the Dev 5 fix batch, 9 Nov 2026)
+
+These extend the contract in sections 3, 5 and 6. Classifier and `/stats` details are in `mini-me-dev-classifier.md`.
+
+**Classifier hook and its one-line note.**
+- `on_captured(message_id, capture)` now returns `str | None`. After a sent text is captured (Sent as is, Reply, `/sent`, or a blind reply) the bot calls it once; if it returns a non-empty string, the bot sends it as a **separate follow-up message**. The "Saved #N" / "Recorded" messages go out first, then the model call, then the note.
+- What the note says (`EditClassifier`): `Edit read as a decision change.` / `a fact change` / `a wording change` / `a cosmetic change`, with `(also <other classes>)` when more than one class was seen, e.g. `Edit read as a wording change (also cosmetic).` The class named is the heaviest one (decision > fact > voice > cosmetic).
+- **No note** when the text was sent as is (class `none`), for discards (the hook is not called), when the message is not classified at all (unknown, waiting, stub draft, ...), or when `CLASSIFIER_NOTIFY=false`.
+- **Failure note:** if the model could not be used, the edit is still saved and the bot says `Saved. I couldn't read this edit yet (<short reason>); it will show as "not classified yet" in /stats.` Reasons: provider not approved, free limit reached, model not reachable, answer not usable. `python -m scripts.classify_pending` fills these in later.
+- A hook that raises, or a note that cannot be sent, never blocks the capture (logged only, NFR-6). The classifier runs inside the webhook request, like the drafter.
+- Roughly 2 s after the reply on Fly with Groq `openai/gpt-oss-120b` (live check, 9 Nov).
+
+**`CLASSIFIER_NOTIFY`** (default `true`): turns the note off (and the failure note with it). It does not stop classification or event logging. Section 6 lists it.
+
+**`/events` and `/events N`** (the v0.1 event table; Telegram only because v0.1 has no web screens, the web log is D11b / D18):
+- `/events`: the latest 12 events, oldest first, each as `<time> #<draft number> <event_name> | <details>`.
+- `/events 7` (or `/events #7`): every step of draft #7, up to 40 lines. A wrong or unknown number gets a short plain reply (`There is no draft #9.`).
+- Details come from a **whitelist** (origin, masked count, drafter version, confidence, data mode, model time, action, capture, shown state, reason, edit class and all classes, method, "never light", "token changed"). **No message text and no model reason** are shown.
+- **Times are shown in IST (Asia/Kolkata)**, with `(IST)` in the heading. Stored times are unchanged: the `events` table still holds UTC (`timestamptz`). SQLite returns naive datetimes; they are read as UTC. The Docker image has no system time zone data, so `tzdata` is a declared dependency; if the zone is still missing, a fixed +05:30 offset is used (India has no daylight saving).
+- Draft numbers are the same derived numbers as in the draft messages (section 4a).
+
+**`/stats`**: counts, class mix, shown vs blind, the north star as a labelled range until the light/heavy boundary is set (decision 5.19 pt 2), and own / made-up data kept apart from real data. Definitions are in the classifier doc, section 7.
+
+**`ThreadStore.numbers(chat_id)`** returns `{message_id: draft number}` for the event view.
+
+**Tests:** the bot tests for the note, `/events` and `/help` live in `tests/test_classifier.py` and `tests/test_results.py`; IST display and the fix batch are in `tests/test_v01_fix_batch.py`.

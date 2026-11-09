@@ -29,8 +29,6 @@ class Settings(BaseSettings):
     # Reply cap for the drafter's model call. Reasoning models ("thinking") spend part of it before they
     # answer, so keep it generous; models that do not think simply stop early.
     drafter_max_tokens: int = 1500
-    # Output ceiling for one draft. Reasoning models spend part of it on hidden thinking, so keep headroom.
-    drafter_max_tokens: int = 1000
     # v0.1 only (decision given 7 Nov 2026): the drafter declares the incoming text to be own / made-up, so
     # an unverified provider may be used. Off by default. Does NOT touch the guard in app/llm/base.py.
     # Remove before real third-party messages (D3b / M2).

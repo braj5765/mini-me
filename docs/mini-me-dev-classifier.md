@@ -211,3 +211,26 @@ Rules: precedence (heaviest-class rule), never-light, normalisation (case, punct
 - Neon count query: 34 rows = 14 own / made-up + 20 stub. Classified: 1 `none` (draft #32), 1 `decision` (#33). Null `edit_class` with outcome edited_sent: 9, of which 4 are in the own / made-up block (the rest are stub rows).
 
 **Open item, closed (9 Nov, 11:13 PM IST):** the 4 own / made-up edited messages with no class were edits from before the deploy. `python -m scripts.classify_pending` against Neon printed `{'skipped:stub': 5, 'classified': 4}`. `/stats` afterwards: scored 13 (shown 10 · blind 3) = sent as is 3 + edited 5 + discarded 5; edited 5 = decision 1 · fact 2 · voice 2 · cosmetic 0; never light 3, could be light or heavy 2; north star 23% to 38% (3 to 5 of 13); no edits left unclassified; stub drafts 20 left out. Arithmetic checked. Sent-as-is rows from before the deploy still have a null class; that does not affect `/stats` (it counts by outcome).
+
+## 16. v0.1 fix batch (Dev 5, 9 Nov 2026)
+
+Five small fixes from the tracker, before the freeze. Nothing in D1b / D2b / D3b / D4b / D6b / D9b was touched; no decision was changed; `OWN_DATA_ONLY_MODE` and the LLM guard are unchanged; own or made-up data only. Tests: **274 passing on SQLite** (261 before + 13 new in `tests/test_v01_fix_batch.py`).
+
+| # | Change | Result |
+|---|---|---|
+| 1 | `app/config.py` defined `drafter_max_tokens` twice (1500, then 1000). The second one won, so the documented 1500 never ran. Removed the 1000 line; one definition = **1500** | New tests: no field is defined twice in `Settings` (checks the source, because Python allows the repeat silently), the default is 1500, an env value still overrides it and reaches the model call. One older test had the bug baked in (`max_tokens == 1000`); it now expects 1500 |
+| 2 | Drafts were mostly English while Braj's replies are Hinglish. New prompt **`drafter-v0.3`** (`drafter-v0.2` and `v0.1` unchanged). Only rule 5 differs: language and script come from the VOICE notes, not from the incoming message; English only if the VOICE lines are English; mirrors the message only when VOICE shows no clear language. `PROMPT_VERSION` is now `drafter-v0.3`, so every `draft_generated` logs it | Tests: v0.3 differs from v0.2 in rule 5 only, v0.2 still mirrors the message language, safety rules carried over, the model receives the v0.3 text. Quality check on made-up messages: see the handoff for its status |
+| 3 | `mini_me.egg-info/` untracked (`git rm --cached`) and `*.egg-info/` added to `.gitignore` | `pip install -e` no longer shows modified files |
+| 4 | `/events` and `/events N` show **IST (Asia/Kolkata)**; heading says `(IST)`. Stored times stay UTC. `tzdata` added as a dependency (the slim Docker image has no time zone data); fixed +05:30 fallback if the zone is missing | Tests: UTC to IST conversion (aware and naive, across midnight), both `/events` forms show IST and never "UTC", the stored event time is still the UTC instant |
+| 5 | `mini-me-dev-telegram.md` updated (Project and `docs/`): the hook's one-line note, `CLASSIFIER_NOTIFY`, `/events`, `/stats`, new section 12; stale "stub" lines corrected | This note and that doc |
+
+**Build-level choices.**
+- `LLMDrafter` takes an optional `prompt_version` (default = the released one) and `scripts/run_made_up_batch.py` takes `--prompt`, so v0.2 and v0.3 can be compared on the same messages without a deploy. The version actually used is what gets logged. Production never sets it.
+- IST is a display setting in `app/results/event_view.py` (a constant), not a user setting; nothing else in the app converts times.
+- The 1500 default is kept (the documented value, headroom for reasoning models). Raise with `DRAFTER_MAX_TOKENS` if a reasoning model returns empty content.
+- A one-line comment in `app/drafting/prompts/README.md` lists v0.3 and the compare command.
+
+**Q40 / Q41 (decisions 5.19), checked against the code, not built.**
+- **Q41 (north star as a range): already matches.** `/stats` shows the range, says it is a range because light vs heavy is not set (Q1a), and groups rows by data mode. Only the label wording differs slightly from 5.19 ("range until the light/heavy boundary is set"). Not changed; a one-line wording edit in `app/results/stats.py` if you want the exact phrase.
+- **Q40 (hedge to firm): not a one-line change.** It needs the `hedge_to_firm` / `flip` sub-type on decision edits, the `missing_fact` flag, a classifier prompt update (`clf-0.2`), and a separate `hedge_to_firm` line in `/stats`. That is the D9b work already planned (~2 h). The current prompt already counts non-committal to firm as a decision edit, which agrees with 5.19.
+- **Drafter answers firmly when the self-model supports it (the optional item in 5.19):** not built. It is a drafter prompt change (D8b) and was outside these five items.

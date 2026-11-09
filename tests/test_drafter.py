@@ -91,7 +91,7 @@ def test_unknown_or_repeated_item_labels_are_dropped(store, own_mode):
 def test_audit_meta_has_versions_provider_model_timing(store, own_mode):
     r = make(ScriptedLLM(ok()), store).draft(_req())
     m = r.meta
-    assert m["prompt_version"] == PROMPT_VERSION == "drafter-v0.2" and m["provider"] == "fake" and m["model"] == "fake-model-1"
+    assert m["prompt_version"] == PROMPT_VERSION == "drafter-v0.3" and m["provider"] == "fake" and m["model"] == "fake-model-1"
     assert m["confidence_method"] == "conf-0.1" and isinstance(m["llm_ms"], int) and m["retries"] == 0
     assert m["self_model_version"] == store.version_tag() and m["data_mode"] == "own_or_made_up"
     assert set(m["retrieved"]) == {"voice", "decision", "fact"}
@@ -106,7 +106,7 @@ def test_prompt_carries_notes_message_and_call_settings(store, own_mode):
     assert "Says yes to quick favours" in user_msg and "Is on the club committee" in user_msg
     assert "<incoming_message>\nCan you take the mic on the 14th?\n</incoming_message>" in user_msg
     assert re.search(r"- V\d+: ", user_msg) and "- D1: " in user_msg and "- F1: " in user_msg
-    assert call["max_tokens"] == 1000 and call["temperature"] == 0.5
+    assert call["max_tokens"] == 1500 and call["temperature"] == 0.5   # 1500 = documented default (fix batch: it was 1000 by a duplicate)
 
 
 def test_empty_self_model_still_drafts_and_says_nothing_yet(engine, own_mode):

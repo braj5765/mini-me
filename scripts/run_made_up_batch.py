@@ -30,6 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--pause", "--delay", dest="pause", type=float, default=0.0,
                     help="seconds to wait between messages (free tiers have per-minute token limits; Groq: 20)")
     ap.add_argument("--only", help="comma-separated message numbers to run, e.g. 7,8,10 (re-run failures)")
+    ap.add_argument("--prompt", help="drafter prompt folder to use, e.g. drafter-v0.2 (default: the current release); "
+                                     "for comparing versions on the same messages")
     ap.add_argument("--rate-limit-wait", type=float, default=30.0,
                     help="seconds to wait and retry (up to 3 times) when the provider answers 429")
     a = ap.parse_args(argv)
@@ -40,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     engine = db.get_engine()
     store = SelfModelStore(engine)
-    drafter = LLMDrafter(get_llm(), store, settings=s)
+    drafter = LLMDrafter(get_llm(), store, settings=s, prompt_version=a.prompt)
     msgs = parse_own_lines(Path(a.file).read_text(encoding="utf-8-sig"))
 
     only = {int(x) for x in a.only.split(",") if x.strip()} if a.only else None
@@ -82,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         ts = sorted(times)
         out.append(f"\nn={len(times)} ok of {len(rows)}; median {statistics.median(ts):.0f} ms; "
                    f"p90 {ts[min(len(ts) - 1, int(len(ts) * 0.9))]} ms; max {ts[-1]} ms; "
-                   f"provider={drafter.llm.provider} model={drafter.llm.model}; self-model {store.version_tag()}")
+                   f"prompt={drafter.prompt_version} provider={drafter.llm.provider} model={drafter.llm.model}; self-model {store.version_tag()}")
     text = "\n".join(out)
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8-sig")

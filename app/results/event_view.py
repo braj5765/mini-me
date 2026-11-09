@@ -2,9 +2,17 @@
 
 Telegram-only on purpose: v0.1 has no web screens (decisions 5.8 adjustment / 5.15 pt 2), and the web event log
 is D11b / D18. Only whitelisted fields are shown (ids, counts, labels, versions). Message text is never shown,
-even though it is stored masked. Times are UTC.
+even though it is stored masked. Times are shown in IST (Asia/Kolkata); stored times stay UTC.
 """
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+
+try:
+    from zoneinfo import ZoneInfo
+    DISPLAY_TZ = ZoneInfo("Asia/Kolkata")
+except Exception:                       # no tz database on the machine: IST has no daylight saving, so a fixed offset is exact
+    DISPLAY_TZ = timezone(timedelta(hours=5, minutes=30), "IST")
+TZ_LABEL = "IST"
 
 from app.events import queries
 
@@ -49,9 +57,16 @@ def _detail(name: str, p: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+def to_ist(t: datetime) -> datetime:
+    """Stored times are UTC. SQLite hands back naive datetimes, which are UTC too."""
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=timezone.utc)
+    return t.astimezone(DISPLAY_TZ)
+
+
 def _when(ev: dict) -> str:
     t = ev["occurred_at"]
-    return t.strftime("%d %b %H:%M:%S") if hasattr(t, "strftime") else str(t)
+    return to_ist(t).strftime("%d %b %H:%M:%S") if isinstance(t, datetime) else str(t)
 
 
 def _line(ev: dict, label: str) -> str:
@@ -71,13 +86,13 @@ def events_text(engine, numbers: dict[str, int], by_number: Callable[[int], str 
         evs = queries.events_for_message(engine, mid)
         if not evs:
             return f"No events logged for draft #{arg}."
-        lines = [f"Draft #{arg} - every step (UTC):"] + [_line(e, "") for e in evs[:MAX_LINES]]
+        lines = [f"Draft #{arg} - every step ({TZ_LABEL}):"] + [_line(e, "") for e in evs[:MAX_LINES]]
         return "\n".join(lines)
 
     evs = queries.recent_events(engine, 12)
     if not evs:
         return "No events yet."
-    lines = ["Latest steps, oldest first (UTC). /events 7 shows one draft in full:"]
+    lines = [f"Latest steps, oldest first ({TZ_LABEL}). /events 7 shows one draft in full:"]
     for e in evs:
         n = numbers.get(e.get("message_id") or "")
         lines.append(_line(e, f"#{n} " if n else ""))

@@ -2,7 +2,7 @@
 
 Flow for one message (decisions 4 step 2, 5.2 confidence, 5.16, 5.17 pt 3):
   1. Pick self-model items for the message (SelfModelStore.retrieve).
-  2. Build the prompt from versioned files (prompts/drafter-v0.2), label items V1.., D1.., F1..
+  2. Build the prompt from versioned files (prompts/drafter-v0.3), label items V1.., D1.., F1..
   3. One LLM call through app.llm.get_llm() (provider / model from LLM_PROVIDER / LLM_MODEL).
   4. Parse JSON {draft, confidence, rationale, used}; check tokens; retry ONCE on bad output.
   5. Return text, confidence, one-line rationale, ids of the self-model items used.
@@ -27,7 +27,7 @@ from app.selfmodel.store import SelfModelStore
 
 log = logging.getLogger("minime.drafter")
 
-PROMPT_VERSION = "drafter-v0.2"
+PROMPT_VERSION = "drafter-v0.3"
 CONFIDENCE_METHOD = "conf-0.1"
 DRAFTER_NAME = "llm"
 TEMPERATURE = 0.5
@@ -116,17 +116,22 @@ class LLMDrafter:
     name = DRAFTER_NAME
     version = PROMPT_VERSION
 
-    def __init__(self, llm: LLMClient, store: SelfModelStore, *, settings: Settings | None = None):
+    def __init__(self, llm: LLMClient, store: SelfModelStore, *, settings: Settings | None = None,
+                 prompt_version: str | None = None):
         self.llm, self.store = llm, store
         self.settings = settings or get_settings()
+        # Normally the released PROMPT_VERSION. A test run may pass an older folder to compare versions
+        # (scripts/run_made_up_batch.py --prompt); the version actually used is what gets logged.
+        self.prompt_version = prompt_version or PROMPT_VERSION
+        self.version = self.prompt_version
 
     # -------------------------------------------------------------- public
     def draft(self, req: DraftRequest) -> DraftResult:
         retrieved = self.store.retrieve(req.masked_text)
         lines, by_label = _label_items(retrieved)
-        system = load_prompt(PROMPT_VERSION, "system")
+        system = load_prompt(self.prompt_version, "system")
         user = render(
-            load_prompt(PROMPT_VERSION, "user"),
+            load_prompt(self.prompt_version, "user"),
             voice="\n".join(lines["voice"]) or _LAYER_EMPTY,
             decision="\n".join(lines["decision"]) or _LAYER_EMPTY,
             fact="\n".join(lines["fact"]) or _LAYER_EMPTY,
@@ -175,10 +180,10 @@ class LLMDrafter:
             rationale=rationale,
             items_used=[UsedItem(layer=i["layer"], item_id=i["item_id"], label=_short(i["text"])) for i in used_items],
             drafter=DRAFTER_NAME,
-            drafter_version=PROMPT_VERSION,
+            drafter_version=self.prompt_version,
             is_stub=False,
             meta={
-                "prompt_version": PROMPT_VERSION, "confidence_method": CONFIDENCE_METHOD,
+                "prompt_version": self.prompt_version, "confidence_method": CONFIDENCE_METHOD,
                 "provider": self.llm.provider, "model": self.llm.model, "llm_ms": llm_ms, "retries": retries,
                 "data_mode": "own_or_made_up" if own_mode else "third_party_guarded",
                 "self_model_version": self.store.version_tag(),
