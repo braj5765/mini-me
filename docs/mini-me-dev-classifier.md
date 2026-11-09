@@ -107,7 +107,7 @@ Shown vs blind: shown 22 scored, 6 as is · blind 6 scored, 0 as is
 Not scored: outcome unknown 1 (window expired 1) · not replying 0 · waiting 0
 ```
 
-**/events** (the read-only event table; Telegram only because v0.1 has no web screens, and the web log is D11b / D18): `/events` = latest 12 events, `/events 7` = every step of draft #7. Only whitelisted fields are shown (versions, counts, labels, classes). No message text, no model reason. Times are UTC.
+**/events** (the read-only event table; Telegram only because v0.1 has no web screens, and the web log is D11b / D18): `/events` = latest 12 events, `/events 7` = every step of draft #7. Only whitelisted fields are shown (versions, counts, labels, classes). No message text, no model reason. Times are UTC in this first build; **IST since the 9 Nov fix batch** (section 16; stored times are still UTC).
 
 ## 8. Config (Fly secrets / env)
 
@@ -180,18 +180,18 @@ Rules: precedence (heaviest-class rule), never-light, normalisation (case, punct
 **Product-level or needs a view**
 1. **Decision edits will dominate while the drafter plays safe.** `drafter-v0.2` answers "check karke bataunga" whenever no rule covers a message, so most real replies ("haan", "nahi") change the stance from non-committal to firm. 5.4 says decision edit = "stance changed (yes→no)". I counted non-committal ↔ firm as a decision change (it tells us a decision rule is missing). That will push the north star down and decision fidelity down until the self-model has decision rules. Is that the intended reading, or should "no stance → stance" be its own thing (or a fact / voice-like "gap" that is not a penalty)? Needs the Ideation chat before D9b and D15.
 2. **North star is a range.** While Q1a is open I show "x% to y%" instead of one number. Design-core §1 says one weekly number. OK for v0.1; confirm.
-3. **The hook now returns a note and there is a new `/events` command.** Small additions to the Dev 2 contract. Update the Telegram doc when convenient.
+3. **The hook now returns a note and there is a new `/events` command.** Small additions to the Dev 2 contract. _(Done 9 Nov: Telegram doc section 12, section 16 here.)_
 
 **Contradictions or gaps in earlier work (not changed here)**
 4. **Numbered tokens do not exist yet.** The masker still writes `[PHONE]` / `[EMAIL]`, so two different phone numbers look the same and a changed number is invisible to the classifier until D3b (5.17 pt 3). The token-change rule is built and tested with numbered tokens and `Person A/B`, ready for D3b. Names in free text are still unmasked.
 5. **`not_replying` is not in the `Outcome` enum** (see D2b / D4b above). The decisions say it exists (5.17 pt 4).
-6. **`app/config.py` defines `drafter_max_tokens` twice** (1500, then 1000), so the second wins and the documented 1500 is not what runs. Dev 3 follow-up; not changed here.
-7. **`mini_me.egg-info/` is committed to git**, so `pip install -e` shows it as modified. Suggest untracking it.
+6. **`app/config.py` defines `drafter_max_tokens` twice** (1500, then 1000), so the second wins and the documented 1500 is not what runs. Dev 3 follow-up; not changed here. _(Fixed 9 Nov, section 16 item 1.)_
+7. **`mini_me.egg-info/` is committed to git**, so `pip install -e` shows it as modified. Suggest untracking it. _(Fixed 9 Nov, section 16 item 3.)_
 
 **Limits of this session**
 8. This session had no route to Fly, Groq or Telegram; Braj ran the deploy, live loop and Telegram checks (section 15). `clf-0.1` quality is still unmeasured; the offline model's classes are heuristics and say nothing about quality.
 9. With `DRAFTER=stub` nothing gets classified (stub rows are skipped by design).
-10. Event times in `/events` are UTC; Braj is in IST. A display time zone can be added if it bothers you.
+10. Event times in `/events` are UTC; Braj is in IST. A display time zone can be added if it bothers you. _(Done 9 Nov, section 16 item 4.)_
 
 ## 15. Test-run notes (9 Nov 2026, small samples: plumbing and behaviour, not accuracy)
 
@@ -228,7 +228,8 @@ Five small fixes from the tracker, before the freeze. Nothing in D1b / D2b / D3b
 - `LLMDrafter` takes an optional `prompt_version` (default = the released one) and `scripts/run_made_up_batch.py` takes `--prompt`, so v0.2 and v0.3 can be compared on the same messages without a deploy. The version actually used is what gets logged. Production never sets it.
 - IST is a display setting in `app/results/event_view.py` (a constant), not a user setting; nothing else in the app converts times.
 - The 1500 default is kept (the documented value, headroom for reasoning models). Raise with `DRAFTER_MAX_TOKENS` if a reasoning model returns empty content.
-- A one-line comment in `app/drafting/prompts/README.md` lists v0.3 and the compare command.
+- `app/drafting/prompts/README.md` lists v0.3 and the compare command.
+- Older sections of this doc are kept as written; the places a fix batch item changed are annotated "Fixed / Done 9 Nov" (section 7 `/events` times, flags 3, 6, 7, 10).
 
 **Q40 / Q41 (decisions 5.19), checked against the code, not built.**
 - **Q41 (north star as a range): already matches.** `/stats` shows the range, says it is a range because light vs heavy is not set (Q1a), and groups rows by data mode. Only the label wording differs slightly from 5.19 ("range until the light/heavy boundary is set"). Not changed; a one-line wording edit in `app/results/stats.py` if you want the exact phrase.
