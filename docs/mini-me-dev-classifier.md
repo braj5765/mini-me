@@ -2,7 +2,7 @@
 
 _Built 9 Nov 2026 · Spoke: Dev 4 Classifier + results view · Status: **code complete, 261 tests passing on SQLite, pushed to `main`**. **Not yet verified, because this session could not reach them: (a) a deploy to Fly, (b) a run against a real model.** The M1 loop was run end to end on the 29 made-up messages with a scripted stand-in model (plumbing only). Braj's steps for both are in section 11. M1 is therefore "code complete, pending deploy + live run" (checklist in section 10)._
 
-Source of truth: decisions 4 step 3, 5.4, 5.7, 5.10 mapping, 5.12, 5.13 pts 2/4/5, 5.15, 5.17, 5.18; foundation, Telegram and drafting docs; timeline section 3 (v0.1 rules, cut order, M1) and tasks D9a / D11a. Where the PRD differs, decisions win. No decision was changed; items that need a view are in section 13.
+Source of truth: decisions 4 step 3, 5.4, 5.7, 5.10 mapping, 5.12, 5.13 pts 2/4/5, 5.15, 5.17, 5.18; foundation, Telegram and drafting docs; timeline section 3 (v0.1 rules, cut order, M1) and tasks D9a / D11a. Where the PRD differs, decisions win. No decision was changed; items that need a view are in section 14.
 
 ## 1. What was built
 
@@ -36,7 +36,7 @@ Source of truth: decisions 4 step 3, 5.4, 5.7, 5.10 mapping, 5.12, 5.13 pts 2/4/
 7. Log `edit_classified` (once per message), then write `edit_class` + `classifier_version` on the record. The outcome is not touched.
 8. The bot sends a one-line note ("Edit read as a wording change (also cosmetic)."), unless `CLASSIFIER_NOTIFY=false` or the edit was sent as is.
 
-**Class rules (5.4, as given to the model):** *decision* = stance changed (yes/no, accept/decline, promise made or withdrawn; also non-committal ↔ firm answer, see flag 2). *fact* = a date, time, name, number, amount, place, link or placeholder differs, was added or removed. *voice* = same stance and facts, different wording, tone, length or language mix. *cosmetic* = greeting, sign-off, punctuation, capitals, emoji, spacing, typo fix.
+**Class rules (5.4, as given to the model):** *decision* = stance changed (yes/no, accept/decline, promise made or withdrawn; also non-committal ↔ firm answer, see flag 1 in section 14). *fact* = a date, time, name, number, amount, place, link or placeholder differs, was added or removed. *voice* = same stance and facts, different wording, tone, length or language mix. *cosmetic* = greeting, sign-off, punctuation, capitals, emoji, spacing, typo fix.
 
 **Light / heavy.** The flag stays a placeholder: `light_or_heavy: null` on every event, `rules.BOUNDARY_SET = False`. Decision and fact edits carry `never_light: true` (5.13 pt 4). Nothing is inferred beyond that.
 
@@ -161,7 +161,7 @@ Rules: precedence (heaviest-class rule), never-light, normalisation (case, punct
 - Cosmetic-only edits decided by rules, not by the model; a changed placeholder always adds `fact` in code.
 - Model sees only the two masked texts, not the incoming message; temperature 0; one retry; failure leaves the edit unclassified (no event, no guess).
 - Empty model reply on a real text difference → `cosmetic`, flagged `fallback: empty_model_reply`.
-- Stub rows and rows with no draft event are skipped entirely (not classified, not counted).
+- Stub rows and rows with no draft event are skipped entirely (not classified, never scored; /stats only lists them under "Left out of everything above").
 - North star shown as a **range** while light / heavy is unset; light / heavy rows read "not set yet"; stats grouped by data mode; all-time.
 - `/events` in Telegram as the v0.1 event table; hook note; `CLASSIFIER_NOTIFY`; classifier model defaults to the drafter's.
 - `EditClassifier` runs inside the webhook request (like the drafter); the "Sent as is" and Saved messages go out before the model call.
