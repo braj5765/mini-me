@@ -1,6 +1,6 @@
 # Mini Me — Dev 4: Edit classifier + results view (D9a, D11a, v0.1 parts)
 
-_Built 9 Nov 2026 · Spoke: Dev 4 Classifier + results view · Status: **code complete, 261 tests passing on SQLite, pushed to `main`**. **Not yet verified, because this session could not reach them: (a) a deploy to Fly, (b) a run against a real model.** The M1 loop was run end to end on the 29 made-up messages with a scripted stand-in model (plumbing only). Braj's steps for both are in section 11. M1 is therefore "code complete, pending deploy + live run" (checklist in section 10)._
+_Built 9 Nov 2026 · Spoke: Dev 4 Classifier + results view · Status: **code complete, 261 tests passing on SQLite, pushed to `main`, deployed to Fly, checked by Braj on the real bot on 9 Nov.** Checks run: offline loop (29 made-up messages, all plumbing checks OK), live loop on the real model (all OK), Telegram `/help`, Sent as is, blind reply with edit (note shown), Discard, `/stats`, `/events`, `/events N`, and the Neon count query. **One open item: 4 edited messages show "not classified yet"** (section 15). Checklist in section 10; test-run notes in section 15._
 
 Source of truth: decisions 4 step 3, 5.4, 5.7, 5.10 mapping, 5.12, 5.13 pts 2/4/5, 5.15, 5.17, 5.18; foundation, Telegram and drafting docs; timeline section 3 (v0.1 rules, cut order, M1) and tasks D9a / D11a. Where the PRD differs, decisions win. No decision was changed; items that need a view are in section 14.
 
@@ -75,7 +75,7 @@ Record: `edit_class` (`none` for sent as is) and `classifier_version` are set. `
 | Model | The same layer as the drafter: `CLASSIFIER_PROVIDER` / `CLASSIFIER_MODEL` if set, else `LLM_PROVIDER` / `LLM_MODEL` (today Groq `openai/gpt-oss-120b`). Temperature 0. `CLASSIFIER_MAX_TOKENS=1500` (reasoning headroom) |
 | Texts sent | The masked draft and the masked sent text only. **The incoming message is not sent** (less third-party text; not needed for 5.4). Each text is cut at 2,000 characters (`truncated` is logged). Closing tags typed into the texts are neutralised and the prompt says to ignore instructions inside them |
 
-**Not tested against a real model.** The prompt is written to 5.4, but this session had no route to a provider. Treat `clf-0.1` as untried until the live run (section 11) and the D9b spot-check.
+**First real-model runs done (9 Nov, small samples, plumbing and behaviour only, no accuracy claim):** the live M1 loop and one real edit on Fly (section 15). Treat `clf-0.1` as lightly tried until the D9b spot-check.
 
 ## 6. LLM guard and own-data mode (5.18)
 
@@ -130,14 +130,14 @@ Rules: precedence (heaviest-class rule), never-light, normalisation (case, punct
 | Forward a message to the Telegram bot | Done earlier (Dev 2), tested on real Telegram 6 Nov |
 | Get a draft in your voice with confidence and a one-line rationale | Done earlier (Dev 3), run live on Fly 8-9 Nov |
 | Tap "Sent as is" or paste the final text | Done earlier (Dev 2: button, Reply, `/sent`) |
-| **See the edit classified** | Code complete and tested; shown as a chat note and in `/events`. **Live check pending** (section 11) |
-| **See every step in the event log** | `/events` and `/events N` built and tested; the full table is in Neon. **Live check pending** |
-| **/stats shows the counts** | Built and tested (section 7). **Live check pending** |
+| **See the edit classified** | **Done, checked live on Fly 9 Nov:** draft #33 (blind) got the note "Edit read as a decision change (also voice, cosmetic)" 2 s after the reply, and `edit_classified` shows in `/events` (method llm, gpt-oss-120b). See the open item in section 15 |
+| **See every step in the event log** | **Done, checked live:** `/events` and `/events 7` show every step from message_received to edit_classified; a discard stops at draft_discarded; stub draft #2 has no classification, as designed |
+| **/stats shows the counts** | **Done, checked live:** the numbers add up (section 15) |
 | Masking is on | Done (D3a): phones and emails only; extended masking is D3b |
-| It runs on hosting, not only on a laptop | The previous build runs on Fly. **This build is not deployed yet** (no Fly access from the session) |
+| It runs on hosting, not only on a laptop | **Done:** this build is deployed on Fly and answered `/help`, `/stats`, `/events` and classified an edit |
 | Never cut: event logging, masking, own / made-up data, classifier version logging | All kept |
 | Cut order (event table first) | Not needed; the event table is in |
-| ~30 made-up messages end to end | **Plumbing: done** (29 messages, scripted model, all checks OK). **With the real model: pending** |
+| ~30 made-up messages end to end | **Done:** 29 messages offline (scripted model) and live on the real model, all six plumbing checks OK both times |
 
 ## 11. Steps for Braj (Windows PowerShell)
 
@@ -189,6 +189,25 @@ Rules: precedence (heaviest-class rule), never-light, normalisation (case, punct
 7. **`mini_me.egg-info/` is committed to git**, so `pip install -e` shows it as modified. Suggest untracking it.
 
 **Limits of this session**
-8. No route to Fly, Groq or Telegram from the workspace: no deploy, and no real-model test. `clf-0.1` prompt quality is unknown; the offline model's classes are heuristics and say nothing about quality.
+8. This session had no route to Fly, Groq or Telegram; Braj ran the deploy, live loop and Telegram checks (section 15). `clf-0.1` quality is still unmeasured; the offline model's classes are heuristics and say nothing about quality.
 9. With `DRAFTER=stub` nothing gets classified (stub rows are skipped by design).
 10. Event times in `/events` are UTC; Braj is in IST. A display time zone can be added if it bothers you.
+
+## 15. Test-run notes (9 Nov 2026, small samples: plumbing and behaviour, not accuracy)
+
+**Local:** 261 tests passed (1 warning, text not seen). Offline loop and live loop (real model, throw-away SQLite) both passed all six plumbing checks; no failed or unclassified rows; about 1.2 s per draft.
+
+**Live loop, how the classes looked (19 edited rows; made-up replies were written without seeing the drafts, so draft / reply mismatch is built in):**
+- Greeting + emoji additions came out cosmetic; same-meaning rewordings came out voice; an added detail came out fact; sent as is came out `none` with no model call.
+- **Decision was 10 of 19**, mostly deferring drafts ("let me check") meeting firm replies. This is flag 1 (section 14). One of them (draft "will confirm by tonight" vs reply "14 ko booked hai") is arguably a fact edit.
+- Placeholder rule at work: a draft with `[EMAIL]` and a reply without it became fact; a reply that added `[PHONE]` came out decision (heaviest class).
+- Blind rows can never be "sent as is" (no draft is seen before the reply).
+- Drafter side, not the classifier: drafts are mostly English while replies are Hinglish.
+
+**Real Telegram on Fly (9 Nov, about 11:00 to 11:05 PM IST):**
+- `/help` lists `/stats` and `/events`. Draft #32: Sent as is, recorded. Draft #33: blind (held); the reply was the incoming text itself ("can you come this Friday?"), so "decision (also voice, cosmetic)" is a test artefact, not a quality signal. The classification came 2 s after the reply (llm method, `openai/gpt-oss-120b`), so the Fly model settings work for the classifier. Draft #34: Discard, no classification, as designed.
+- `/stats` arithmetic checks out: own / made-up block 14 messages = scored 9 (sent as is 3 + edited and classified 1 + discarded 5) + edited not classified 4 + outcome unknown 1. Shown 8 + blind 1 = 9. North star 3 of 9 = 33% to 33% (equal ends because the only classified edit is a decision, which is never light). The 20 stub drafts are listed under "Left out of everything above".
+- `/events` shows the latest steps; `/events 2` (a 6 Nov stub draft) shows its trail with no classification, as designed.
+- Neon count query: 34 rows = 14 own / made-up + 20 stub. Classified: 1 `none` (draft #32), 1 `decision` (#33). Null `edit_class` with outcome edited_sent: 9, of which 4 are in the own / made-up block (the rest are stub rows).
+
+**Open item (not closed):** the 4 own / made-up edited messages with no class. Most likely they were edited before this build was deployed, so no classifier ran. Not confirmed: a model failure (for example an empty reply) would look the same. To settle it, run `python -m scripts.classify_pending` against Neon and watch the printed counts, then `/stats` again. Sent-as-is rows from before the deploy also have a null class; that does not affect `/stats` (it counts by outcome) and `classify_pending` leaves them alone.
