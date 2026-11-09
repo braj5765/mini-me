@@ -91,7 +91,7 @@ def test_unknown_or_repeated_item_labels_are_dropped(store, own_mode):
 def test_audit_meta_has_versions_provider_model_timing(store, own_mode):
     r = make(ScriptedLLM(ok()), store).draft(_req())
     m = r.meta
-    assert m["prompt_version"] == PROMPT_VERSION == "drafter-v0.3" and m["provider"] == "fake" and m["model"] == "fake-model-1"
+    assert m["prompt_version"] == PROMPT_VERSION == "drafter-v0.2" and m["provider"] == "fake" and m["model"] == "fake-model-1"
     assert m["confidence_method"] == "conf-0.1" and isinstance(m["llm_ms"], int) and m["retries"] == 0
     assert m["self_model_version"] == store.version_tag() and m["data_mode"] == "own_or_made_up"
     assert set(m["retrieved"]) == {"voice", "decision", "fact"}

@@ -2,7 +2,7 @@
 
 Flow for one message (decisions 4 step 2, 5.2 confidence, 5.16, 5.17 pt 3):
   1. Pick self-model items for the message (SelfModelStore.retrieve).
-  2. Build the prompt from versioned files (prompts/drafter-v0.3), label items V1.., D1.., F1..
+  2. Build the prompt from versioned files (prompts/drafter-v0.2), label items V1.., D1.., F1..
   3. One LLM call through app.llm.get_llm() (provider / model from LLM_PROVIDER / LLM_MODEL).
   4. Parse JSON {draft, confidence, rationale, used}; check tokens; retry ONCE on bad output.
   5. Return text, confidence, one-line rationale, ids of the self-model items used.
@@ -27,7 +27,7 @@ from app.selfmodel.store import SelfModelStore
 
 log = logging.getLogger("minime.drafter")
 
-PROMPT_VERSION = "drafter-v0.3"
+PROMPT_VERSION = "drafter-v0.2"   # v0.3 (voice-register rule) was tried on 10 Nov and not adopted: see prompts/README.md
 CONFIDENCE_METHOD = "conf-0.1"
 DRAFTER_NAME = "llm"
 TEMPERATURE = 0.5

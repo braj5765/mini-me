@@ -46,10 +46,14 @@ def test_drafter_max_tokens_can_still_be_set_by_env_and_reaches_the_model_call(s
 
 
 # ---------------------------------------------------------------- 2. drafter-v0.3
-def test_current_prompt_is_v03_and_logged(store, own_mode):
-    assert PROMPT_VERSION == "drafter-v0.3"
+def test_default_prompt_stays_v02_and_v03_is_opt_in(store, own_mode):
+    """v0.3 was tried on made-up messages (10 Nov) and not adopted: it made more Hinglish drafts but once confirmed an
+    unknown fact. Production keeps v0.2; v0.3 stays in the repo, unchanged, and only runs when asked for."""
+    assert PROMPT_VERSION == "drafter-v0.2"
     r = LLMDrafter(ScriptedLLM(ok()), store, settings=get_settings()).draft(_req())
-    assert r.drafter_version == "drafter-v0.3" and r.meta["prompt_version"] == "drafter-v0.3"
+    assert r.drafter_version == "drafter-v0.2" and r.meta["prompt_version"] == "drafter-v0.2"
+    r3 = LLMDrafter(ScriptedLLM(ok()), store, settings=get_settings(), prompt_version="drafter-v0.3").draft(_req())
+    assert r3.meta["prompt_version"] == "drafter-v0.3"
 
 
 def test_v03_takes_register_from_voice_notes_not_from_the_message():
@@ -73,18 +77,20 @@ def test_v03_differs_from_v02_in_rule_5_only_and_v02_is_unchanged():
     assert "come from the VOICE notes" not in "\n".join(v2)
 
 
-def test_v03_system_prompt_is_what_the_model_receives(store, own_mode):
+def test_default_system_prompt_is_v02_and_v03_when_chosen(store, own_mode):
     llm = ScriptedLLM(ok())
     LLMDrafter(llm, store, settings=get_settings()).draft(_req("Is the club meet on Friday?"))
-    system = llm.calls[0]["messages"][0].content
-    assert system == load_prompt("drafter-v0.3", "system")
-
-
-def test_older_prompt_can_be_chosen_for_comparison_and_is_logged_as_such(store, own_mode):
-    llm = ScriptedLLM(ok())
-    r = LLMDrafter(llm, store, settings=get_settings(), prompt_version="drafter-v0.2").draft(_req())
     assert llm.calls[0]["messages"][0].content == load_prompt("drafter-v0.2", "system")
-    assert r.drafter_version == "drafter-v0.2" and r.meta["prompt_version"] == "drafter-v0.2"
+    llm3 = ScriptedLLM(ok())
+    LLMDrafter(llm3, store, settings=get_settings(), prompt_version="drafter-v0.3").draft(_req())
+    assert llm3.calls[0]["messages"][0].content == load_prompt("drafter-v0.3", "system")
+
+
+def test_other_prompt_can_be_chosen_for_comparison_and_is_logged_as_such(store, own_mode):
+    llm = ScriptedLLM(ok())
+    r = LLMDrafter(llm, store, settings=get_settings(), prompt_version="drafter-v0.1").draft(_req())
+    assert llm.calls[0]["messages"][0].content == load_prompt("drafter-v0.1", "system")
+    assert r.drafter_version == "drafter-v0.1" and r.meta["prompt_version"] == "drafter-v0.1"
 
 
 def test_batch_runner_prompt_flag_and_report_line(tmp_path, monkeypatch, store, own_mode):
