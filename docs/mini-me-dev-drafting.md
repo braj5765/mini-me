@@ -1,6 +1,6 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **183 tests passing on SQLite**, on `main`, **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms evidence gathered 9 Nov, decision still open (section 5)._
+_Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **183 tests passing on SQLite**, on `main`, **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms evidence gathered 9 Nov, decision still open (section 5). **Update 10 Nov (Dev 5 fix batch, section 14):** `DRAFTER_MAX_TOKENS` is really 1500 now; `drafter-v0.3` tried and not adopted; a voice note added to the self-model (tag `sm-0.1-287d59d0`) to fix Hinglish._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
@@ -166,3 +166,14 @@ See the handoff block in the chat; copied in the decision-adjacent items above (
 11. **Commits from another session** (`b9a7892`, `6fcc8da`: reasoning headroom, `reasoning_effort`, 429 handling, `--pause`) were merged into main; their effects are described above.
 12. **Fly trial limit:** machine stops after 5 idle minutes (section 9). Braj chose on 9 Nov to keep the free trial for now and revisit later.
 13. **No domain or register tag on items.** Work and club messages share one self-model, so the drafter picks a register by guess. For v0.1 Braj kept club and college style only. An additive `domain` field and retrieval by domain is the likely fix (product-level, not built).
+
+## 14. Update 10 Nov 2026 (Dev 5, v0.1 fix batch)
+
+Details of the batch are in `mini-me-dev-classifier.md` section 16. What changed for drafting:
+
+- **`DRAFTER_MAX_TOKENS` is now really 1500.** `app/config.py` defined it twice and the second (1000) won, so the 1500 written in sections 4 and 12 was not what ran before 10 Nov. One definition remains (1500). Draft timings in section 9 were measured under the old 1000.
+- **`drafter-v0.3` tried, not adopted.** It changes rule 5 only (draft language and script follow the VOICE notes, not the incoming message). On 10 made-up messages (1, 2, 6, 7, 9, 11, 13, 21, 24, 29), one run each, it gave more Hinglish drafts (7 of 10 vs about 5 for v0.2) but confirmed an unknown fact once ("meeting Friday 5 baje hai"), agreed to a time without checking, added an invented "see you later", and left two drafts in English. Braj judged v0.2 clearly better. **`PROMPT_VERSION` stays `drafter-v0.2`.** `v0.3` is kept unchanged in the repo and runs only when asked for: `LLMDrafter(..., prompt_version=...)` or `python -m scripts.run_made_up_batch ... --prompt drafter-v0.3` (the version used is what gets logged).
+- **Hinglish fixed with a self-model edit instead (10 Nov, in Neon, no deploy).** Braj added one voice note by hand (`seed_self_model --add voice ...`, source `manual`; its id ends `f79f`): replies in casual Hinglish, short and informal, even when the incoming message is in English, and does not switch to full English for club or college questions. Self-model tag `sm-0.1-d28e0a9a` became `sm-0.1-287d59d0`. Same 10 messages on `drafter-v0.2`: 8 of 10 drafts in Hinglish (English: #7, #24), no failures, no invented venue, time or amount, no claimed actions. Watch items: #1 restated the time from the question before saying it would confirm; "Thik hai" before checking on #9; promises remain (#2, #7, #11, #24), already accepted on 9 Nov (flag 9). Live on Telegram (three made-up English messages, drafts #37 to #39): all three drafts in Hinglish. One run each, small sample: a quality read, not a measurement.
+- **Undo:** `python -m scripts.seed_self_model --archive <new item id>` (soft removal; the next draft uses the old self-model).
+- **Not built:** `drafter-v0.4` (would keep rules 1 and 8 next to the language rule); the optional "answer firmly when the self-model supports it" item (decisions 5.19); the `domain` field (D6b).
+- **Test note:** a test fails if `OPENAI_COMPAT_REASONING_EFFORT` is set in the shell (the test setup does not clear it); remove the variable before `python -m pytest`.
