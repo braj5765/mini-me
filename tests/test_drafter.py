@@ -323,7 +323,8 @@ def test_prompt_files_exist_and_use_no_gate_wording():
     root = Path(llm_drafter.__file__).parent / "prompts"
     for f in [root / "drafter-v0.1" / "system.md", root / "drafter-v0.1" / "user.md",
               root / "drafter-v0.2" / "system.md", root / "drafter-v0.2" / "user.md",
-              root / "seeder-v0.1" / "system.md", root / "seeder-v0.1" / "user.md"]:
+              root / "seeder-v0.1" / "system.md", root / "seeder-v0.1" / "user.md",
+              root / "seeder-v0.2" / "system.md", root / "seeder-v0.2" / "user.md"]:
         assert f.exists()
     rule_7 = re.search(r"7\. .*", load_prompt(PROMPT_VERSION, "system")).group(0)
     assert "Do not use the words unlock, gate or level up" in rule_7
@@ -513,3 +514,14 @@ def test_v02_prompt_forbids_claiming_actions_and_keeps_v01_unchanged():
     assert "Do not use the words unlock, gate or level up" in v2
     v1 = load_prompt("drafter-v0.1", "system")
     assert "never say something is already done" not in v1  # released versions stay immutable
+
+
+def test_seeder_v02_asks_for_general_rules_and_lasting_facts_and_v01_is_unchanged():
+    from app.selfmodel.seed import SEEDER_VERSION
+
+    assert SEEDER_VERSION == "seeder-v0.2"
+    v2 = load_prompt("seeder-v0.2", "system")
+    assert "never \"he\" or \"she\"" in v2 and "Ignore jokes" in v2 and "Facts are things still true next month" in v2
+    assert "separate note for each register" in v2
+    v1 = load_prompt("seeder-v0.1", "system")
+    assert "Ignore jokes" not in v1  # released versions stay immutable

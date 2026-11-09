@@ -222,3 +222,11 @@ def test_cli_add_edit_archive(engine, monkeypatch):
     assert cli.main(["--archive", item["item_id"]]) == 0
     assert store.list_items("decision") == []
     assert cli.main(["--archive", "sm_nope"]) == 1
+
+
+def test_seeding_logs_the_current_seeder_version(engine):
+    class OneShot:
+        def complete(self, messages, **kw):
+            return '{"voice": [], "decisions": [], "facts": []}'
+    res = seed_self_model(SelfModelStore(engine), ["a one", "b two", "c three", "d four", "e five"], llm=OneShot())
+    assert res["seeder_version"] == "seeder-v0.2"

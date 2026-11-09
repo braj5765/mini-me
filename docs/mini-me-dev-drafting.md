@@ -1,6 +1,6 @@
 # Mini Me — Dev 3: Self-model + drafting (D6a, D8a, v0.1 parts)
 
-_Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **179 tests passing on SQLite**, on `main` (latest code commit `405f12a`), **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms check still open (section 5)._
+_Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **181 tests passing on SQLite**, on `main`, **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms check still open (section 5)._
 
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
@@ -37,7 +37,7 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 2. Keep other people's names and details out for now: masking of names is D3b (5.16), so a name in your own line is stored and sent to the model as written.
 3. Point `.env` at the database to seed (Neon `DATABASE_URL` for production) and set `LLM_PROVIDER`, `LLM_MODEL` and the provider key. Then:
    `python -m scripts.seed_self_model seed/own_lines.txt` (add `--no-llm` for verbatim examples only, `--replace` to archive the earlier seed first). `python -m scripts.seed_self_model --list` shows what is stored.
-4. What happens: lines are de-duplicated and masked; up to 15 spread-out lines become voice examples; unless `--no-llm`, one model call (`seeder-v0.1`) writes up to 8 voice, 6 decision and 6 fact notes from the lines. The call is declared own text because the function only accepts own lines. A file that looks like a chat export (timestamps with sender names) is **refused**. Re-running skips identical text.
+4. What happens: lines are de-duplicated and masked; up to 15 spread-out lines become voice examples; unless `--no-llm`, one model call (`seeder-v0.2`) writes up to 8 voice, 6 decision and 6 fact notes from the lines. The call is declared own text because the function only accepts own lines. A file that looks like a chat export (timestamps with sender names) is **refused**. Re-running skips identical text.
 5. Review the result with `--list`. Everything is editable later (screen 4 / D6b).
 
 ## 4. Drafter design (`app/drafting/llm_drafter.py`)
@@ -61,10 +61,10 @@ Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.
 | Item | Value |
 |---|---|
 | Drafter prompt | `drafter-v0.2` (system.md + user.md), logged as `prompt_version` and as `drafter_version` on every draft. `drafter-v0.1` is kept unchanged |
-| Seeder prompt | `seeder-v0.1` |
+| Seeder prompt | `seeder-v0.2` (general rules only, lasting facts, jokes and one-off events ignored, neutral wording, a voice note per register). `seeder-v0.1` is kept unchanged |
 | Confidence method | `conf-0.1` |
 | Provider / model | `openai_compat` adapter pointed at Groq, model `openai/gpt-oss-120b` (free tier; Gemini `gemini-2.5-flash-lite` kept as a comparison option). Set by `LLM_PROVIDER` / `LLM_MODEL` (Fly secrets), recorded per draft as `provider` and `model`. No model name is in code. Free-tier limits noted from third-party sources, to confirm in the Groq console: about 30 requests/min, 8K tokens/min; a draft is about 2-3K tokens, so about 3 drafts a minute in a batch. |
-| Provider terms check | **Still open** (5.16 pt 2, needed before M2). Groq's terms are reported to bar training on inputs; Gemini's free tier uses inputs to improve Google products. Not verified by this build. Record provider, plan, date here when done: _pending Braj_ |
+| Provider terms check | **Still open** (5.16 pt 2, needed before M2). Third-party sources say Groq's Data Processing Addendum bars training on customer data and that inference requests are not retained by default (zero-data-retention is a console setting); Google's Gemini API terms say unpaid-tier content is used to improve Google products and may be read by human reviewers. Links in the chat handoff. Not verified by this build. Record provider, plan, date here when done: _pending Braj_ |
 
 Pre-release edit (7 Nov, before any deploy or real run, so still `v0.1`): prompts made pronoun-neutral and the drafter told to mirror the message's language and script (the real sample is Hinglish in Roman letters). From the first real run on, a prompt change means a new version folder.
 
@@ -113,7 +113,7 @@ All runs used made-up or Braj's own messages only (`OWN_DATA_ONLY_MODE=true`). Q
 - Problems: #21 confirmed a venue it was never told (0.67); #7 and #24 claimed an action as done and #24 misread who was late; #11 asked for a pincode, from a decision rule that was one old message turned into a rule; #4 began with "Kedi", copied from one of Braj's own seed lines. Confidence was highest on the riskiest drafts, so it carries little signal yet.
 - Only one decision rule and no fact was cited across the 29 drafts.
 
-**Quality notes, self-model seed.** The seeder wrote 8 voice, 6 decision and 6 fact notes from the sample. Some "decision rules" and "facts" are descriptions of single past messages (a pincode request, an S3 access grant, an ElevenLabs model name), one rule came from a joke, and the notes say "He" although the prompt asks for neutral wording. Braj archived 5 weak items and added a casual-style voice note by hand (self-model tag `sm-0.1-521d0a6f` to `sm-0.1-7a8b30f3`). The seed also mixes formal work English and casual Hinglish, and all of it is sent every time. A `seeder-v0.2` prompt (rules must be general, facts must be lasting, neutral wording) is recommended and **not built**.
+**Quality notes, self-model seed.** The seeder wrote 8 voice, 6 decision and 6 fact notes from the sample. Some "decision rules" and "facts" are descriptions of single past messages (a pincode request, an S3 access grant, an ElevenLabs model name), one rule came from a joke, and the notes say "He" although the prompt asks for neutral wording. Braj archived 5 weak items and added a casual-style voice note by hand (self-model tag `sm-0.1-521d0a6f` to `sm-0.1-7a8b30f3`). The seed also mixes formal work English and casual Hinglish, and all of it is sent every time. `seeder-v0.2` (9 Nov: rules must be general, facts lasting, jokes and one-off events ignored, neutral wording, one voice note per register) is built and tested with a scripted model; **not yet run on the real sample**. Re-seed with `--replace` (this archives earlier seed items; manual items stay).
 
 **Quality notes, `v0.2` live on Telegram (6 drafts, #26-#31).**
 - Venue confirmation: "check karke batauga", no confirmation. Volunteers list: no pincode. Instruction-injection message: not obeyed. Casual greeting: lowercase "h", no emoji, closer to Braj's own edits.
@@ -158,6 +158,6 @@ See the handoff block in the chat; copied in the decision-adjacent items above (
 7. `outcome_unknown` is now also written when no draft could be made (`reason=draft_failed`). Scores are unaffected; D11a can show it separately.
 8. **Latency and quality** are now measured on small made-up samples only (section 9). Not a basis for any threshold.
 9. **Drafts can still promise future actions** ("bhej deta hun", "update kar dunga") at low-to-medium confidence. Product-level: allow it, since Braj reviews every draft, or forbid promises in the prompt or with a code check? Not decided here.
-10. **Seeder output quality.** Seeded "rules" and "facts" can be single past events or jokes, and use "He". A `seeder-v0.2` prompt is recommended; a review step on screen 4 (D6b) matters for the same reason.
+10. **Seeder output quality.** `seeder-v0.1` wrote "rules" and "facts" from single past events or jokes, and used "He". `seeder-v0.2` addresses this; still unmeasured on the real sample. A review step on screen 4 (D6b) matters for the same reason.
 11. **Commits from another session** (`b9a7892`, `6fcc8da`: reasoning headroom, `reasoning_effort`, 429 handling, `--pause`) were merged into main; their effects are described above.
-12. **Fly trial limit:** machine stops after 5 idle minutes (section 9).
+12. **Fly trial limit:** machine stops after 5 idle minutes (section 9). Braj chose on 9 Nov to keep the free trial for now and revisit later.

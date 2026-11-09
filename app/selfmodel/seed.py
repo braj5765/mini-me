@@ -25,7 +25,7 @@ from app.selfmodel.store import (
 
 log = logging.getLogger("minime.seed")
 
-SEEDER_VERSION = "seeder-v0.1"
+SEEDER_VERSION = "seeder-v0.2"
 MIN_LINES = 5
 MAX_LINES_TO_MODEL = 120
 MAX_CHARS_TO_MODEL = 8000
