@@ -85,7 +85,9 @@ def _parse_notes(raw: str) -> dict:
     s = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip())
     a, b = s.find("{"), s.rfind("}")
     if a < 0 or b <= a:
-        raise SelfModelError("The model did not return JSON notes.")
+        raise SelfModelError(
+            "The model did not return JSON notes (an empty reply usually means a reasoning model used up its "
+            "token budget; nothing was changed).")
     try:
         data = json.loads(s[a:b + 1])
     except json.JSONDecodeError:
@@ -94,13 +96,37 @@ def _parse_notes(raw: str) -> dict:
 
 
 def seed_self_model(store: SelfModelStore, own_lines: list[str], *, llm: LLMClient | None = None,
-                    source_ref: str = "own_lines", max_exemplars: int = 15, replace: bool = False) -> dict:
+                    source_ref: str = "own_lines", max_exemplars: int = 15, replace: bool = False,
+                    max_tokens: int = 3000) -> dict:
     """Seed the store. Returns counts. `llm=None` stores only the verbatim examples."""
     lines = _dedupe([ln.strip() for ln in own_lines if ln and ln.strip()])
     if len(lines) < MIN_LINES:
         raise SelfModelError(f"Need at least {MIN_LINES} of your own messages to seed; got {len(lines)}.")
     refuse_chat_exports(lines)
     masked = [mask_text(ln) for ln in lines]
+
+    # Ask the model FIRST, so a failed call leaves the store exactly as it was (no half-replaced seed).
+    notes: dict = {}
+    if llm is not None:
+        sample, size = [], 0
+        for ln in _spread(masked, MAX_LINES_TO_MODEL):
+            if size + len(ln) > MAX_CHARS_TO_MODEL:
+                break
+            sample.append(f"- {ln}")
+            size += len(ln)
+        messages = [Message("system", load_prompt(SEEDER_VERSION, "system")),
+                    Message("user", render(load_prompt(SEEDER_VERSION, "user"), lines="\n".join(sample)))]
+        for attempt, budget in enumerate((max_tokens, max_tokens * 2)):
+            raw = llm.complete(
+                messages, max_tokens=budget, temperature=0.2,
+                contains_third_party_text=False,  # own lines only: enforced above, never other people's text
+            )
+            try:
+                notes = _parse_notes(raw)
+                break
+            except SelfModelError:
+                if attempt == 1:
+                    raise
 
     archived = 0
     if replace:
@@ -114,28 +140,14 @@ def seed_self_model(store: SelfModelStore, own_lines: list[str], *, llm: LLMClie
         store.add_item(Layer.voice, ln, SRC_EXEMPLAR, source_ref)
         added["voice_examples"] += 1
 
-    if llm is not None:
-        sample, size = [], 0
-        for ln in _spread(masked, MAX_LINES_TO_MODEL):
-            if size + len(ln) > MAX_CHARS_TO_MODEL:
-                break
-            sample.append(f"- {ln}")
-            size += len(ln)
-        raw = llm.complete(
-            [Message("system", load_prompt(SEEDER_VERSION, "system")),
-             Message("user", render(load_prompt(SEEDER_VERSION, "user"), lines="\n".join(sample)))],
-            max_tokens=3000, temperature=0.2,
-            contains_third_party_text=False,  # own lines only: enforced above, never other people's text
-        )
-        notes = _parse_notes(raw)
-        for key, layer in _LAYER_FOR_KEY.items():
-            for text in (notes.get(key) or [])[: MAX_NOTES[key]]:
-                if not isinstance(text, str) or not text.strip() or len(text.strip()) > MAX_ITEM_CHARS:
-                    continue
-                if store.has_text(layer, text):
-                    added["skipped_duplicates"] += 1
-                    continue
-                store.add_item(layer, text, SRC_EXTRACTED, source_ref)
-                added[layer.value] += 1
+    for key, layer in _LAYER_FOR_KEY.items():
+        for text in (notes.get(key) or [])[: MAX_NOTES[key]]:
+            if not isinstance(text, str) or not text.strip() or len(text.strip()) > MAX_ITEM_CHARS:
+                continue
+            if store.has_text(layer, text):
+                added["skipped_duplicates"] += 1
+                continue
+            store.add_item(layer, text, SRC_EXTRACTED, source_ref)
+            added[layer.value] += 1
     return {"own_lines_read": len(lines), "archived_earlier_seed_items": archived, **added,
             "seeder_version": SEEDER_VERSION if llm is not None else None}

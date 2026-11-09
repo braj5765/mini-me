@@ -230,3 +230,30 @@ def test_seeding_logs_the_current_seeder_version(engine):
             return '{"voice": [], "decisions": [], "facts": []}'
     res = seed_self_model(SelfModelStore(engine), ["a one", "b two", "c three", "d four", "e five"], llm=OneShot())
     assert res["seeder_version"] == "seeder-v0.2"
+
+
+def test_failed_model_call_leaves_the_store_untouched_on_replace(engine):
+    store = SelfModelStore(engine)
+    lines = ["a one", "b two", "c three", "d four", "e five"]
+    seed_self_model(store, lines, llm=FakeLLM(NOTES))
+    before = [(i["item_id"], i["status"]) for i in store.list_items(include_archived=True)]
+
+    with pytest.raises(SelfModelError):
+        seed_self_model(store, lines, llm=FakeLLM(""), replace=True)  # model returns nothing, twice
+    after = [(i["item_id"], i["status"]) for i in store.list_items(include_archived=True)]
+    assert after == before  # nothing archived, nothing added
+
+
+def test_empty_first_reply_is_retried_with_a_bigger_budget(engine):
+    class EmptyThenOk:
+        def __init__(self):
+            self.budgets = []
+
+        def complete(self, messages, *, max_tokens=600, **kw):
+            self.budgets.append(max_tokens)
+            return "" if len(self.budgets) == 1 else json.dumps(NOTES)
+
+    llm = EmptyThenOk()
+    res = seed_self_model(SelfModelStore(engine), ["a one", "b two", "c three", "d four", "e five"],
+                          llm=llm, max_tokens=1000)
+    assert llm.budgets == [1000, 2000] and res["voice"] >= 1
