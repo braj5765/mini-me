@@ -87,7 +87,7 @@ Prompts are files in the repo; never edit a released version in place, copy to `
 New: `app/selfmodel/{__init__,store,seed}.py`, `app/drafting/{llm_drafter,factory,tokens,prompts_loader}.py`, `app/drafting/prompts/{drafter-v0.1,drafter-v0.2,seeder-v0.1}/*.md`, `scripts/seed_self_model.py` (now also `--add`, `--edit`, `--archive`; direct store edits, no events until D6b), `scripts/run_made_up_batch.py` (`--pause`, `--delay` alias, `--only`, wait-and-retry on HTTP 429), `seed/{own_lines.example.txt,made_up_messages.txt}`, `tests/test_selfmodel.py`, `tests/test_drafter.py`.
 Changed: `app/db.py` (+`self_model_items`), `app/config.py` (+`DRAFTER`, `DRAFTER_MAX_TOKENS`, `OWN_DATA_ONLY_MODE`, `OPENAI_COMPAT_REASONING_EFFORT`), `app/drafting/base.py` (+`DraftResult.meta`, `DraftError`), `app/telegram/bot.py` (failure path, audit fields), `app/telegram/format.py` (`draft_failed`), `app/telegram/router.py` (`build_drafter`), `pyproject.toml` (prompt files packaged; checked in a built wheel), `.gitignore` (`seed/*` private), `.env.example`.
 
-## 8. Tests (179 total, all passing on SQLite)
+## 8. Tests (181 total, all passing on SQLite)
 
 - **Self-model CRUD (25):** schema columns, add / get / list / count, edit bumps version, archive keeps the row, bad layer / empty / too long refused, text masked, version tag, retrieval (small store whole, large trimmed, notes before examples).
 - **Seeding from own lines only:** parsing; examples and notes with sources; model sees only own text and the call is declared own text; **chat export refused**; too few lines refused; masked before storage and before the model; no-model path; re-run dedupe; `--replace` archives only seed items (manual survive); bad model JSON stops cleanly.
