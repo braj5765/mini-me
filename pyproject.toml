@@ -23,6 +23,7 @@ include = ["app*"]
 
 [tool.setuptools.package-data]
 "app.drafting" = ["prompts/*/*.md", "prompts/README.md"]
+"app.classifier" = ["prompts/*/*.md", "prompts/README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,61 @@
+# Made-up final replies, one per message in seed/made_up_messages.txt (same order). All invented. They stand in
+# for what the user would really type, independent of the draft; scripts/run_m1_loop.py decides per message
+# whether the user taps "Sent as is", sends a lightly changed draft, replies with this text, discards, or skips.
+
+yes bro, friday 5 pe hi hai
+
+form link group me daal diya hai, check kar lo
+
+haan free hu, 20 ko pakka karunga
+
+posters me dekh raha hu, drafts wednesday tak bhej dunga
+
+nahi yaar, speakers is weekend nahi de paunga
+
+14 ko booked hai, abhi confirm kiya hai
+
+minutes bhej deta hu kal tak
+
+haan aa jaunga saturday morning
+
+8 pm tomorrow chalega, kar lo
+
+last date sunday night hai
+
+haan add kar diya hai, form fill kar dena
+
+nahi, approval treasurer se lena padega
+
+dress code nahi hai, casual chalega
+
+nahi yaar, thursday ko meri bhi class hai
+
+budget abhi final nahi hai, treasurer se puchna padega
+
+ok, report sunday tak bhej dunga
+
+vendor ka number [PHONE] hai
+
+haan aa raha hu, 6 baje pakka
+
+haan kal subah tak review kar deta hu
+
+haan, first years bhi aa sakte hain
+
+haan, venue seminar hall hi hai
+
+try karta hu, 2 log laa sakta hu
+
+nahi, mai aisa nahi bol sakta, pehle check karna padega
+
+ok, group me bata deta hu
+
+haan mil gaya, dekh leta hu
+
+certificates kal tak ready ho jayenge
+
+haan kar dunga, 10 min me khatam kar dunga
+
+ID card nahi hai to entry me dikkat hogi, helpdesk pe pooch lo
+
+arre koi baat nahi, always welcome 🙂

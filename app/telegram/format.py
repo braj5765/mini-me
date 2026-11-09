@@ -17,11 +17,13 @@ HELP = (
     "• Now and then I draft quietly and hold it back until you've replied first. "
     "Reply to my note with what you sent, and I'll show you mine after.\n"
     "• A plain message is always treated as a new message, not as your final text.\n\n"
-    "/pending – what is waiting\n/stats – numbers (coming soon)\n/help – this message\n\n"
+    "/pending – what is waiting\n/stats – numbers so far (a demo of the loop, not results)\n"
+    "/events – latest steps; /events 7 = everything for draft #7\n/help – this message\n\n"
     "Nothing is ever sent for you from here: you always press send."
 )
 
 STATS_STUB = "Stats are coming soon. For now, everything is recorded in the event log."
+EVENTS_STUB = "The event view is not switched on."
 BLIND_NOTICE = "I've drafted this one; reply first and I'll show you mine."
 NO_TEXT = "I can only read text for now. Paste or forward the message as text."
 NOTHING_WAITING = "Nothing is waiting for a reply from you."

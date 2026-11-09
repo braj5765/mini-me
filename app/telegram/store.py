@@ -76,6 +76,10 @@ class ThreadStore:
         order = self._order(chat_id)
         return order.index(message_id) + 1 if message_id in order else 0
 
+    def numbers(self, chat_id: int | str) -> dict[str, int]:
+        """message_id -> draft number (#N) for the whole chat (same derivation as number_of)."""
+        return {m: i + 1 for i, m in enumerate(self._order(chat_id))}
+
     def list_open(self, chat_id: int | str) -> list[dict[str, Any]]:
         t = db.telegram_threads
         order = {m: i + 1 for i, m in enumerate(self._order(chat_id))}

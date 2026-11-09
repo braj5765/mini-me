@@ -30,5 +30,15 @@ fly deploy      # the app registers its own webhook on startup
 ```
 The bot stays off (503) until the token and secret are set.
 
+## Edit classifier + results view (D9a, D11a)
+Each captured reply is classified (decision / fact / voice / cosmetic; sent as is = none) and logged as
+`edit_classified`. In Telegram: `/stats` (counts, class mix, shown vs blind, north-star range, data-mode labels) and
+`/events` (latest steps; `/events 7` = every step of draft #7). Notes: `docs/mini-me-dev-classifier.md`.
+```bash
+python -m scripts.run_m1_loop                  # whole loop on 29 made-up messages, offline scripted model (plumbing check)
+python -m scripts.run_m1_loop --live --pause 20  # same with the real model (needs LLM_PROVIDER / LLM_MODEL and a key)
+python -m scripts.classify_pending             # classify edits that were captured while the model was down
+```
+
 ## Rules
 Own and made-up messages only until the privacy build (D3b) is done.

@@ -40,15 +40,22 @@ MODE = "shadow"  # Telegram is draft-only; live autonomy is Gmail only this vers
 
 
 # --------------------------------------------------------------------------- hooks (D9a / D11a)
-def noop_classifier_hook(message_id: str, capture: str) -> None:
-    """D9a replaces this. Called once after a sent text is captured (sent as-is, edited, or blind reply).
-    D9a: compare message_records.draft_text with sent_text, then write edit_class + classifier_version on
-    the record and log `edit_classified` (once per message)."""
+def noop_classifier_hook(message_id: str, capture: str) -> str | None:
+    """Default (no classifier wired). Called once after a sent text is captured (sent as-is, edited, or blind
+    reply). D9a's `EditClassifier` (app/classifier) replaces it in get_bot_deps(): it writes edit_class +
+    classifier_version on the record and logs `edit_classified`. A hook may return a short line of text; the
+    bot sends it as a follow-up note (D9a does, so the user sees how the edit was read). None = say nothing."""
+    return None
 
 
 def stub_stats(store: "BotDeps") -> str:
-    """D11a replaces this with the counts of as-is / light / heavy / discard and the class mix."""
+    """Default (no results view wired). D11a's provider (app/results) replaces it in get_bot_deps()."""
     return fmt.STATS_STUB
+
+
+def stub_events(deps: "BotDeps", arg: str, chat_id: Any) -> str:
+    """Default for /events when no event view is wired (D11a wires app/results/event_view)."""
+    return fmt.EVENTS_STUB
 
 
 @dataclass
@@ -58,8 +65,9 @@ class BotDeps:
     writer: EventWriter
     client: TelegramAPI
     drafter: Drafter
-    on_captured: Callable[[str, str], None] = noop_classifier_hook
+    on_captured: Callable[[str, str], str | None] = noop_classifier_hook
     stats_provider: Callable[["BotDeps"], str] = stub_stats
+    events_provider: Callable[["BotDeps", str, Any], str] = stub_events
     rng: Callable[[], float] = random.random
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     store: ThreadStore = field(init=False)
@@ -147,11 +155,17 @@ def _mark_draft_message(deps: BotDeps, chat_id: Any, msg_id: int, original: str 
     _safe_clear_buttons(deps, chat_id, msg_id)
 
 
-def _run_hook(deps: BotDeps, message_id: str, capture: str) -> None:
+def _run_hook(deps: BotDeps, message_id: str, capture: str, chat_id: Any = None) -> None:
     try:
-        deps.on_captured(message_id, capture)
+        note = deps.on_captured(message_id, capture)
     except Exception:  # noqa: BLE001
         log.exception("on_captured hook failed")  # logging must not block the user (NFR-6)
+        return
+    if isinstance(note, str) and note.strip() and chat_id is not None:
+        try:
+            deps.client.send_message(chat_id, note)
+        except Exception:  # noqa: BLE001
+            log.warning("could not send the hook note")
 
 
 # --------------------------------------------------------------------------- entry point
@@ -212,6 +226,8 @@ def _handle_command(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
         deps.client.send_message(chat_id, fmt.HELP)
     elif cmd == "/stats":
         deps.client.send_message(chat_id, deps.stats_provider(deps))
+    elif cmd == "/events":
+        deps.client.send_message(chat_id, deps.events_provider(deps, arg, chat_id))
     elif cmd == "/pending":
         items = []
         for t in deps.store.list_open(chat_id):
@@ -367,7 +383,7 @@ def _capture_final_text(thread: dict, final_text: str, chat_id: int, deps: BotDe
         _safe_clear_buttons(deps, chat_id, thread.get("prompt_tg_msg_id"))
         deps.client.send_message(chat_id, fmt.saved(number, matched))
 
-    _run_hook(deps, mid, via)
+    _run_hook(deps, mid, via, chat_id)
 
 
 def _handle_callback(cq: dict, deps: BotDeps) -> None:
@@ -401,7 +417,7 @@ def _handle_callback(cq: dict, deps: BotDeps) -> None:
                         **common)
         deps.client.answer_callback(cq["id"], "Saved: sent as written.")
         _mark_draft_message(deps, chat_id, prompt_id, cq["message"].get("text"), fmt.STATUS_SENT)
-        _run_hook(deps, mid, "button")
+        _run_hook(deps, mid, "button", chat_id)
     else:
         deps.writer.upsert_message(mid, outcome="discarded", time_to_action_ms=tta)
         deps.writer.log(EventName.draft_acted, message_id=mid, idempotency_key=make_key("draft_acted", mid),

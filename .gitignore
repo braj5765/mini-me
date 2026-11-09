@@ -13,3 +13,5 @@ __pycache__/
 seed/*
 !seed/*.example.txt
 !seed/made_up_messages.txt
+!seed/made_up_replies.txt
+

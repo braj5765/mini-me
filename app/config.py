@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     # Remove before real third-party messages (D3b / M2).
     own_data_only_mode: bool = False
 
+    # Edit classifier (D9a). Blank provider / model = use LLM_PROVIDER / LLM_MODEL (same model as the drafter).
+    classifier_provider: str = ""
+    classifier_model: str = ""
+    # Reply cap for the classifier's call; reasoning models spend part of it thinking, so keep headroom.
+    classifier_max_tokens: int = 1500
+    # Send Braj a one-line "Edit read as ..." note after a capture (set false to keep the chat quiet).
+    classifier_notify: bool = True
+
     # Telegram bot (D4a). Bot disabled until the token is set. All build-level placeholders.
     telegram_bot_token: str = ""           # Fly secret
     telegram_webhook_secret: str = ""      # Fly secret; Telegram echoes it in a header on every call

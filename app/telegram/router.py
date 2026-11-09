@@ -10,8 +10,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app import db
 from app.config import Settings, get_settings
+from app.classifier.classifier import EditClassifier
 from app.drafting.factory import build_drafter
 from app.events import EventWriter
+from app.results.event_view import make_events_provider
+from app.results.stats import make_stats_provider
 from app.telegram.bot import BotDeps, handle_update, sweep_expired
 from app.telegram.client import TelegramClient
 
@@ -23,15 +26,20 @@ SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 
 def get_bot_deps() -> BotDeps:
     """Overridden in tests (app.dependency_overrides). The drafter comes from build_drafter() (real drafter
-    when LLM_PROVIDER / LLM_MODEL are set, else the stub); D9a passes on_captured; D11a passes stats_provider."""
+    when LLM_PROVIDER / LLM_MODEL are set, else the stub). D9a passes on_captured; D11a passes stats_provider and
+    events_provider."""
     s = get_settings()
     if not s.telegram_bot_token or not s.telegram_webhook_secret:
         raise HTTPException(status_code=503, detail="Telegram bot not configured")
     engine = db.get_engine()
+    writer = EventWriter(engine)
     return BotDeps(
-        settings=s, engine=engine, writer=EventWriter(engine),
+        settings=s, engine=engine, writer=writer,
         client=TelegramClient(s.telegram_bot_token, s.telegram_api_base),
         drafter=build_drafter(s, engine),
+        on_captured=EditClassifier(engine, writer, settings=s),     # D9a
+        stats_provider=make_stats_provider(),                        # D11a
+        events_provider=make_events_provider(),                      # D11a (read-only event table)
     )
 
 
