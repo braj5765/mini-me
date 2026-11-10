@@ -16,6 +16,7 @@ Telegram is draft-only. The bot never sends anything on the user's behalf.
 import hashlib
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -24,13 +25,13 @@ from typing import Any, Callable
 from sqlalchemy.engine import Engine
 
 from app.config import Settings
-from app.drafting.base import DraftError, DraftRequest, Drafter
+from app.drafting.base import DraftError, DraftRequest, DraftResult, Drafter
 from app.events import EventName, EventWriter
 from app.events.writer import make_key
 from app.privacy.masking import EMAIL_TOKEN, PHONE_TOKEN, mask_text, pseudonymise
 from app.telegram import format as fmt
 from app.telegram.client import TelegramAPI
-from app.telegram.store import ThreadStore, aware
+from app.telegram.store import ThreadStore, aware, is_shared
 
 log = logging.getLogger("minime.telegram")
 
@@ -134,6 +135,25 @@ def _common(contact_type: str | None = None) -> dict:
     return out
 
 
+def _common_rec(rec: dict | None) -> dict:
+    """Common event fields taken from the message record, so shared drafts (channel `shortcut`, domain `club`,
+    device `mobile`, contact `unknown`) keep their own values when captured through Telegram. For Telegram-native
+    records this equals _common(contact_type): telegram / group_queries / shadow / no device."""
+    rec = rec or {}
+    out = {"channel": rec.get("channel") or CHANNEL, "domain": rec.get("domain") or DOMAIN, "mode": MODE,
+           "device_type": rec.get("device_type")}
+    if rec.get("contact_type"):
+        out["contact_type"] = rec["contact_type"]
+    return out
+
+
+def _clear_thread_buttons(deps: BotDeps, thread: dict) -> None:
+    """Remove the buttons of a thread's draft message. Shared drafts have no message until /pending shows a card."""
+    msg_id, chat = thread.get("prompt_tg_msg_id"), str(thread.get("chat_id") or "")
+    if msg_id is not None and chat.lstrip("-").isdigit():
+        _safe_clear_buttons(deps, int(chat), msg_id)
+
+
 def _safe_clear_buttons(deps: BotDeps, chat_id: Any, msg_id: int | None) -> None:
     if msg_id is None:
         return
@@ -229,21 +249,55 @@ def _handle_command(m: dict, text: str, chat_id: int, deps: BotDeps) -> None:
     elif cmd == "/events":
         deps.client.send_message(chat_id, deps.events_provider(deps, arg, chat_id))
     elif cmd == "/pending":
-        items = []
-        for t in deps.store.list_open(chat_id):
-            rec = deps.writer.get_message(t["message_id"]) or {}
-            items.append((t["number"], rec.get("incoming_text") or "", t["state"]))
-        deps.client.send_message(chat_id, fmt.pending_list(items))
+        _pending(chat_id, deps)
     elif cmd == "/sent":
-        thread = deps.store.latest_open(chat_id)
+        numbered = re.match(r"#(\d+)\s*(.*)", arg.strip(), re.S)
+        if numbered:  # /sent #N <text>: a specific draft, e.g. one shared from the phone
+            thread = deps.store.open_by_number(chat_id, int(numbered.group(1)))
+            arg = numbered.group(2)
+            if not thread:
+                deps.client.send_message(chat_id, f"There is no open draft #{numbered.group(1)}. See /pending.")
+                return
+        else:
+            thread = deps.store.latest_open(chat_id)
         if not thread:
             deps.client.send_message(chat_id, fmt.NOTHING_WAITING)
         elif not arg.strip():
-            deps.client.send_message(chat_id, "Type /sent followed by what you actually sent.")
+            deps.client.send_message(chat_id, "Type /sent followed by what you actually sent (or /sent #N text).")
+        elif is_shared(thread["message_id"]) and not (deps.writer.get_message(thread["message_id"]) or {}).get("draft_text"):
+            deps.client.send_message(chat_id, fmt.SHARED_NO_DRAFT)
         else:
             _capture_final_text(thread, arg, chat_id, deps)
     else:
         deps.client.send_message(chat_id, fmt.HELP)
+
+
+def _pending(chat_id: int, deps: BotDeps) -> None:
+    """The waiting list. Drafts shared from the phone (share-to-draft) have no Telegram message yet: each one that
+    has a draft gets a card now, with the usual buttons (plus Not replying) and Reply / `/sent #N` capture."""
+    open_threads = deps.store.list_open(chat_id)
+    items, cards = [], []
+    for t in open_threads:
+        rec = deps.writer.get_message(t["message_id"]) or {}
+        state = t["state"]
+        if is_shared(t["message_id"]):
+            if not rec.get("draft_text"):
+                state = "shared_ask_first"
+            elif t.get("prompt_tg_msg_id") is None:
+                state = "shared"
+                cards.append((t, rec))
+        items.append((t["number"], rec.get("incoming_text") or "", state))
+    deps.client.send_message(chat_id, fmt.pending_list(items))
+    for t, rec in cards[:10]:
+        draft = DraftResult(text=rec["draft_text"], confidence=rec.get("confidence") or 0.0,
+                            rationale=rec.get("rationale") or "", drafter="share", is_stub=False)
+        try:
+            prompt_id = deps.client.send_message(
+                chat_id, fmt.draft_message(draft, t["number"], rec.get("incoming_text")),
+                reply_markup=fmt.keyboard(t["message_id"], shared=True))
+            deps.store.set_prompt(t["message_id"], prompt_id)
+        except Exception:  # noqa: BLE001
+            log.exception("could not send a shared draft card")
 
 
 # --------------------------------------------------------------------------- ingest + draft
@@ -361,7 +415,7 @@ def _capture_final_text(thread: dict, final_text: str, chat_id: int, deps: BotDe
     matched = _norm(sent) == _norm(draft_text)
     outcome = "sent_as_is" if matched else "edited_sent"
     tta = _ms_since(deps, thread.get("shown_at"))
-    common = _common(rec.get("contact_type"))
+    common = _common_rec(rec)
     via = "reply_text"
     number = deps.store.number_of(chat_id, mid)
 
@@ -380,7 +434,7 @@ def _capture_final_text(thread: dict, final_text: str, chat_id: int, deps: BotDe
         deps.writer.log(EventName.draft_released_after_reply, message_id=mid,
                         payload={"matched": matched}, **common)
     else:
-        _safe_clear_buttons(deps, chat_id, thread.get("prompt_tg_msg_id"))
+        _clear_thread_buttons(deps, thread)
         deps.client.send_message(chat_id, fmt.saved(number, matched))
 
     _run_hook(deps, mid, via, chat_id)
@@ -396,7 +450,7 @@ def _handle_callback(cq: dict, deps: BotDeps) -> None:
         deps.client.answer_callback(cq["id"], "")
         return
     thread = deps.store.get(mid)
-    if not thread or thread["state"] != "shown" or action not in ("sent", "disc") or not deps.store.claim(mid):
+    if not thread or thread["state"] != "shown" or action not in ("sent", "disc", "nrep") or not deps.store.claim(mid):
         # Closed, blind (no buttons exist for blind), unknown, or a retry that lost the race.
         deps.client.answer_callback(cq["id"], fmt.ALREADY_RECORDED)
         _safe_clear_buttons(deps, chat_id, prompt_id)
@@ -404,9 +458,16 @@ def _handle_callback(cq: dict, deps: BotDeps) -> None:
 
     rec = deps.writer.get_message(mid) or {}
     tta = _ms_since(deps, thread.get("shown_at"))
-    common = _common(rec.get("contact_type"))
+    common = _common_rec(rec)
 
-    if action == "sent":
+    if action == "nrep":
+        # 5.17 pt 4: chose not to answer. Not a discard (no reply was sent at all); never scored, counted separately.
+        deps.writer.upsert_message(mid, outcome="not_replying", time_to_action_ms=tta)
+        deps.writer.log(EventName.not_replying, message_id=mid,
+                        payload={"capture": "button", "time_to_action_ms": tta, "shown_state": "shown"}, **common)
+        deps.client.answer_callback(cq["id"], "Noted: not replying.")
+        _mark_draft_message(deps, chat_id, prompt_id, cq["message"].get("text"), fmt.STATUS_NOT_REPLYING)
+    elif action == "sent":
         sent = rec.get("draft_text") or ""
         deps.writer.upsert_message(mid, sent_text=sent, outcome="sent_as_is", time_to_action_ms=tta)
         deps.writer.log(EventName.draft_acted, message_id=mid, idempotency_key=make_key("draft_acted", mid),
@@ -445,8 +506,8 @@ def sweep_expired(deps: BotDeps) -> int:
                 payload={"reason": "capture_window_expired",
                          "window_hours": deps.settings.telegram_capture_window_hours,
                          "shown_state": "blind" if t["state"] == "blind_held" else "shown"},
-                **_common(rec.get("contact_type")))
+                **_common_rec(rec))
             n += 1
         if t["state"] == "shown":
-            _safe_clear_buttons(deps, int(t["chat_id"]), t.get("prompt_tg_msg_id"))
+            _clear_thread_buttons(deps, t)
     return n

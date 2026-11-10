@@ -7,6 +7,7 @@ from app.drafting.base import DraftResult, snippet
 
 BTN_SENT = "✓ Sent as is"
 BTN_DISCARD = "Discard"
+BTN_NOT_REPLYING = "Not replying"
 
 HELP = (
     "Mini Me (private). Forward or paste a message here and I'll draft a reply.\n\n"
@@ -16,7 +17,8 @@ HELP = (
     "(Or type /sent followed by the text; it applies to the newest waiting message.)\n"
     "• Now and then I draft quietly and hold it back until you've replied first. "
     "Reply to my note with what you sent, and I'll show you mine after.\n"
-    "• A plain message is always treated as a new message, not as your final text.\n\n"
+    "• A plain message is always treated as a new message, not as your final text.\n"
+    "• Drafts shared from your phone show up in /pending with their own buttons; /sent #3 text answers draft #3.\n\n"
     "/pending – what is waiting\n/stats – numbers so far (a demo of the loop, not results)\n"
     "/events – latest steps; /events 7 = everything for draft #7\n/help – this message\n\n"
     "Nothing is ever sent for you from here: you always press send."
@@ -32,6 +34,9 @@ ALREADY_RECORDED = "That one is already recorded."
 REPLY_HINT = "Edited it? Reply to this message with what you sent."
 STATUS_SENT = "✓ Recorded: sent as is"
 STATUS_DISCARDED = "Discarded: not sent"
+STATUS_NOT_REPLYING = "Marked: not replying"
+SHARED_NO_DRAFT = ("That one had no draft (I asked you first), so there is nothing to confirm here. "
+                   "It closes by itself when the window ends.")
 
 
 _DRAFT_FAILED_REASONS = {
@@ -84,13 +89,20 @@ def saved(number: int, matched: bool) -> str:
     return f"Saved #{number}: " + ("sent as written." if matched else "edited before sending.")
 
 
+_PENDING_MARK = {
+    "blind_held": " (my draft is held back)",
+    "shared": " (shared from your phone; a card with buttons follows)",
+    "shared_ask_first": " (shared from your phone; I asked you first, no draft)",
+}
+
+
 def pending_list(items: list[tuple[int, str, str]]) -> str:
-    """items: (number, masked incoming text, state); state is 'shown' or 'blind_held'."""
+    """items: (number, masked incoming text, state); state is 'shown', 'blind_held', 'shared' or 'shared_ask_first'."""
     if not items:
         return NOTHING_WAITING
     lines = [f"{len(items)} waiting for you:"]
     for n, text, state in items[:10]:
-        lines.append(f"#{n} · {ref(text)}" + (" (my draft is held back)" if state == "blind_held" else ""))
+        lines.append(f"#{n} · {ref(text)}" + _PENDING_MARK.get(state, ""))
     if len(items) > 10:
         lines.append(f"...and {len(items) - 10} more.")
     return "\n".join(lines)
@@ -101,11 +113,14 @@ def nudge(number: int) -> str:
             f"reply to my message for #{number} instead (swipe it left, or right-click and choose Reply).")
 
 
-def keyboard(message_id: str) -> dict:
-    return {"inline_keyboard": [[
+def keyboard(message_id: str, *, shared: bool = False) -> dict:
+    row = [
         {"text": BTN_SENT, "callback_data": f"sent:{message_id}"},
         {"text": BTN_DISCARD, "callback_data": f"disc:{message_id}"},
-    ]]}
+    ]
+    if shared:  # a shared draft can also be "not replying" (5.17 pt 4); generalised to all items in D4b
+        row.append({"text": BTN_NOT_REPLYING, "callback_data": f"nrep:{message_id}"})
+    return {"inline_keyboard": [row]}
 
 
 def released_message(draft_text: str, matched: bool, number: int | None = None) -> str:

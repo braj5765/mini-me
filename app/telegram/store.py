@@ -8,6 +8,11 @@ from sqlalchemy.engine import Engine
 from app import db
 
 OPEN_STATES = ("shown", "blind_held")
+SHARED_PREFIX = "sh-"   # message ids made by share-to-draft (app/share): no Telegram message of their own until /pending
+
+
+def is_shared(message_id: str) -> bool:
+    return message_id.startswith(SHARED_PREFIX)
 
 
 def aware(dt: datetime | None) -> datetime | None:
@@ -50,11 +55,22 @@ class ThreadStore:
         return self._fix(r)
 
     def latest_open(self, chat_id: int | str) -> dict[str, Any] | None:
+        """Newest open Telegram-native item. Shared drafts (share-to-draft) are left out on purpose: a plain
+        `/sent <text>` or the paste nudge must never land on a draft that was made in another app. Shared drafts
+        are captured by their /pending card (buttons or Reply) or by `/sent #N <text>`."""
         t = db.telegram_threads
         with self.engine.connect() as conn:
-            r = conn.execute(select(t).where(and_(t.c.chat_id == str(chat_id), t.c.state.in_(OPEN_STATES)))
+            r = conn.execute(select(t).where(and_(t.c.chat_id == str(chat_id), t.c.state.in_(OPEN_STATES),
+                                                  ~t.c.message_id.like(SHARED_PREFIX + "%")))
                              .order_by(t.c.created_at.desc()).limit(1)).mappings().first()
         return self._fix(r)
+
+    def open_by_number(self, chat_id: int | str, number: int) -> dict[str, Any] | None:
+        """The open item with draft number `number` (any kind), or None."""
+        for d in self.list_open(chat_id):
+            if d["number"] == number:
+                return d
+        return None
 
     def count_open(self, chat_id: int | str) -> int:
         t = db.telegram_threads
