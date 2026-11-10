@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     telegram_capture_window_hours: float = 24.0  # no capture in this window -> outcome unknown [placeholder]
     telegram_sweep_minutes: float = 10.0   # background check for expired capture windows
 
+    # Share-to-draft (Dev 6, decisions 5.20 / 5.21). Build-level placeholders.
+    share_default_domain: str = "club"      # domain for shared drafts (5.18; group queries = club)
+    share_max_chars: int = 4000             # longest shared text accepted
+    # Your own always-ask topics (5.12 pt 2), comma-separated, e.g. "fees,attendance waiver". Interim keyword match
+    # on the masked text until the autonomy engine (D22) matches by meaning. Only ever adds caution.
+    share_always_ask_topics: str = ""
+    # Confidence floor (5.10 pt 2). Value deferred to post-testing (Q1): unset = floor off. Wired, not decided.
+    share_confidence_floor: float | None = None
+
     @property
     def sqlalchemy_url(self) -> str:
         """Neon gives postgresql://; SQLAlchemy needs the psycopg3 driver name."""

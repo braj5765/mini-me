@@ -34,6 +34,7 @@ ONCE_PER_MESSAGE = {
     EventName.edit_classified, EventName.draft_sent, EventName.draft_discarded,
     EventName.outcome_unknown, EventName.shadow_comparison, EventName.draft_held_blind,
     EventName.draft_released_after_reply,
+    EventName.not_replying,
 }
 
 # Payload keys that carry third-party text and must be masked before storage.

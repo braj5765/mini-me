@@ -15,6 +15,24 @@ class Channel(_S):
     telegram = "telegram"
     email = "email"
     web = "web"
+    shortcut = "shortcut"      # Android share shortcut (HTTP Shortcuts), 5.20 pt 1 B
+    web_share = "web_share"    # installable web app as Android share target, 5.20 pt 1 C (built by Dev 7)
+
+
+class Origin(_S):
+    """`message_received.payload.origin`: how the text arrived. `shared` = Android share sheet (5.20)."""
+    forwarded = "forwarded"
+    pasted = "pasted"
+    shared = "shared"
+
+
+class Capture(_S):
+    """`draft_acted` / `draft_sent` `payload.capture`: how the final text was captured.
+    button / reply_text exist today (Telegram). share / paste are for the web share flow (Dev 7); enum only."""
+    button = "button"
+    reply_text = "reply_text"
+    share = "share"            # the user shared their reply back (blind sample, ask-first reply)
+    paste = "paste"            # the user pasted what they sent into the waiting list
 
 
 class DeviceType(_S):
@@ -29,6 +47,8 @@ class ContactType(_S):
     new_group = "new_group"
     known_individual = "known_individual"
     known_group = "known_group"
+    unknown = "unknown"        # 5.17 pt 1: untagged pasted / shared text. Own scoring bucket; never autonomy-eligible
+                               # on draft-only channels (5.21 pt 1)
 
 
 class EditClass(_S):
@@ -68,6 +88,7 @@ class Outcome(_S):
     sent_as_is = "sent_as_is"
     edited_sent = "edited_sent"
     discarded = "discarded"
+    not_replying = "not_replying"  # 5.17 pt 4: chose not to answer. Excluded from scores, counted separately
     not_me = "not_me"
     user_authored = "user_authored"  # ask-first reply with no draft: no score (5.13 point 5)
     unknown = "unknown"
@@ -103,6 +124,9 @@ class EventName(_S):
     draft_acted = "draft_acted"
     draft_sent = "draft_sent"
     draft_discarded = "draft_discarded"
+    draft_copied = "draft_copied"                  # 5.20 pt 3: the draft reached the clipboard. NOT "sent"
+    not_replying = "not_replying"                  # 5.17 pt 4
+    nudge_sent = "nudge_sent"                      # 5.21 pt 5: Telegram check-in nudge (nothing sends it yet; Dev 7)
     outcome_unknown = "outcome_unknown"            # 5.13 point 2
     edit_classified = "edit_classified"
     shadow_comparison = "shadow_comparison"

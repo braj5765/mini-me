@@ -49,6 +49,29 @@ def mask_text(text: str | None) -> str | None:
     return _PHONE_CANDIDATE.sub(repl, text)
 
 
+def mask_with_values(text: str | None) -> tuple[str | None, list[tuple[str, str]]]:
+    """Same masking as mask_text, but also returns the replaced values as (token, original) in order.
+    For IN-REQUEST use only (share-to-draft restores real values in the HTTP response, 5.21 pt 2). The returned
+    originals must never be stored or logged."""
+    if not text:
+        return text, []
+    found: list[tuple[str, str]] = []
+
+    def email_repl(m: re.Match) -> str:
+        found.append((EMAIL_TOKEN, m.group(0)))
+        return EMAIL_TOKEN
+
+    stage1 = _EMAIL.sub(email_repl, text)
+
+    def phone_repl(m: re.Match) -> str:
+        if _is_phone(m.group(1)):
+            found.append((PHONE_TOKEN, m.group(1)))
+            return PHONE_TOKEN
+        return m.group(0)
+
+    return _PHONE_CANDIDATE.sub(phone_repl, stage1), found
+
+
 def normalise_identifier(identifier: str) -> str:
     """Normalise a contact handle so the same person always maps to the same pseudonym."""
     s = identifier.strip().lower()

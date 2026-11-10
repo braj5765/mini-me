@@ -111,6 +111,21 @@ self_model_items = Table(
 )
 
 
+# Personal API tokens for share-to-draft (Dev 6). Only a SHA-256 hash of each token is stored, never the token.
+# New table: create_all adds it; nothing existing changes.
+api_tokens = Table(
+    "api_tokens", metadata,
+    Column("token_id", String(16), primary_key=True),       # tk_ + 10 hex; shown in `list`, used by `revoke`
+    Column("user_id", String(64), nullable=False),
+    Column("name", String(80), nullable=False),             # e.g. "phone shortcut"
+    Column("token_hash", String(64), nullable=False, unique=True),
+    Column("token_prefix", String(16), nullable=False),     # first characters, so a token can be recognised
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("last_used_at", DateTime(timezone=True)),
+    Column("revoked_at", DateTime(timezone=True)),
+)
+
+
 @lru_cache
 def get_engine() -> Engine:
     return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True, future=True)
