@@ -123,13 +123,13 @@ class EventWriter:
             index_elements=["idempotency_key"]
         )
         with self.engine.begin() as conn:
-            inserted = conn.execute(stmt).rowcount == 1
-            if inserted:
-                return row["event_id"], True
+            conn.execute(stmt)
+            # Do not trust rowcount (the Postgres driver can report it differently for ON CONFLICT DO NOTHING):
+            # the row under this key is ours if its id is the one we just generated.
             existing = conn.execute(
                 select(db.events.c.event_id).where(db.events.c.idempotency_key == key)
             ).scalar_one()
-            return existing, False
+            return existing, existing == row["event_id"]
 
     def log_safe(self, *args: Any, **kwargs: Any) -> tuple[str, bool] | None:
         """Never raises: logging must not block the user (NFR-6). D2b adds the retry queue."""
