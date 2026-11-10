@@ -25,6 +25,7 @@ from sqlalchemy.engine import Engine
 from app.classifier import rules
 from app.events.queries import all_records, draft_payloads, unknown_reasons
 
+NEVER_BLIND_CHANNELS = ("shortcut",)   # 5.20 pt 4: no blind sample, so excluded from the anchoring comparison
 OWN = "own_or_made_up"
 GUARDED = "third_party_guarded"
 UNLABELLED = "unlabelled"
@@ -61,6 +62,9 @@ class Block:
     other: int = 0
     shown: Group = field(default_factory=Group)
     blind: Group = field(default_factory=Group)
+    # Drafts from channels that never hold a draft (the share shortcut, 5.20 pt 4). Scored like any other, but kept
+    # out of the shown-vs-blind comparison so the anchoring gap is only computed where blind items exist.
+    unblinded: Group = field(default_factory=Group)
 
     @property
     def edited_total(self) -> int:
@@ -91,6 +95,7 @@ class Stats:
     blocks: dict[str, Block] = field(default_factory=dict)
     stub_excluded: int = 0
     no_draft: int = 0
+    ask_first_no_draft: int = 0     # shared items I asked you first about: no draft was ever made
     total_rows: int = 0
 
 
@@ -102,7 +107,10 @@ def compute_stats(engine: Engine, user_id: str = "braj") -> Stats:
     for r in records:
         meta = drafts.get(r["message_id"])
         if meta is None:
-            st.no_draft += 1                 # draft failed: never a draft, never scored
+            if r.get("autonomy_decision") == "ask_first":
+                st.ask_first_no_draft += 1   # asked first, no draft made (5.13 pt 5): never scored
+            else:
+                st.no_draft += 1             # draft failed: never a draft, never scored
             continue
         if meta.get("is_stub"):
             st.stub_excluded += 1
@@ -158,7 +166,10 @@ def _count(b: Block, r: dict, unknown_reason: str | None) -> None:
         b.other += 1
         return
 
-    g = b.blind if blind else b.shown
+    if r.get("channel") in NEVER_BLIND_CHANNELS:
+        g = b.unblinded
+    else:
+        g = b.blind if blind else b.shown
     g.scored += 1
     g.as_is += 1 if scored_as_is else 0
 
@@ -173,7 +184,8 @@ _REASON_WORDS = {"capture_window_expired": "window expired", "draft_failed": "dr
 
 def _block_text(b: Block) -> list[str]:
     out = [f"{_MODE_TITLE.get(b.mode, b.mode)} ({b.total} message{'s' if b.total != 1 else ''})"]
-    out.append(f"Scored: {b.scored} (shown {b.shown.scored} · blind {b.blind.scored})")
+    extra = f" · shared from phone, never blind {b.unblinded.scored}" if b.unblinded.scored else ""
+    out.append(f"Scored: {b.scored} (shown {b.shown.scored} · blind {b.blind.scored}{extra})")
     out.append(f"• Sent as is: {b.as_is}")
     out.append("• Light edits: not set yet")
     out.append("• Heavy edits: not set yet")
@@ -225,6 +237,8 @@ def format_stats(st: Stats) -> str:
         foot.append(f"stub drafts {st.stub_excluded}")
     if st.no_draft:
         foot.append(f"no draft made {st.no_draft}")
+    if st.ask_first_no_draft:
+        foot.append(f"asked you first, no draft {st.ask_first_no_draft}")
     if foot:
         lines.append("Left out of everything above: " + " · ".join(foot))
     return "\n".join(lines).rstrip()
