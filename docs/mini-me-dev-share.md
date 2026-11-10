@@ -1,6 +1,6 @@
 # Mini Me — Dev 6: Share-to-draft backend + Android shortcut (§5.20 pt 7 steps a and b)
 
-_Built 10 Nov 2026 · Spoke: Dev 6 · Status: code on `main` (commits `63c7243` … see section 11), **320 tests passing on SQLite** (274 before + 46 new in `tests/test_share.py`), run end to end locally against a real HTTP server with the stub drafter. **Not yet deployed or run on a phone: this session had no route to Fly or to an Android phone. Deploy, live check and the phone setup are steps for Braj (sections 7 and 8).**_
+_Built 10 Nov 2026, host moved 11 Nov 2026 · Spoke: Dev 6 · Status: code on `main` (commits `63c7243` … see section 11), **329 tests passing on SQLite** (274 before + 46 in `tests/test_share.py` + 9 in `tests/test_hosting.py`), run end to end locally against a real HTTP server with the stub drafter. **Hosting is now Render free (decision §5.22; see `mini-me-dev-hosting.md`); Fly.io is no longer used.** Not yet deployed or run on a phone: this session cannot reach Render or an Android phone. Setup, live check and the phone steps are for Braj (sections 7 and 8)._
 
 Source of truth: decisions §5.20, §5.21, §5.13 pts 2 and 5, §5.14, §5.16, §5.17, §5.18, §5.7; design-core (wording); share-flow design §6 and §8. Where this doc and a decision differ, the decision wins. No decision was changed; items needing a view are in section 10.
 
@@ -12,7 +12,7 @@ Pipeline (the existing one, unchanged): **mask locally → store masked → cont
 
 ## 2. Endpoint contract (for Dev 7)
 
-Base URL `https://mini-me.fly.dev`. All routes need `Authorization: Bearer <token>`. Auth runs **before** the body is read: a wrong, missing, malformed or revoked token gets **401** and nothing is stored or logged (tested).
+Base URL: your Render address, `https://<your-render-url>` (for example `https://mini-me.onrender.com`). All routes need `Authorization: Bearer <token>`. Auth runs **before** the body is read: a wrong, missing, malformed or revoked token gets **401** and nothing is stored or logged (tested).
 
 ### `POST /api/draft`
 
@@ -62,7 +62,7 @@ Call it **after** the clipboard write has happened. Logs `draft_copied` and retu
 ## 3. Token handling
 
 - Table `api_tokens` (new; `create_all` adds it on deploy). Stores `token_id` (`tk_…`), name, **SHA-256 hash**, first characters (for recognising it), created / last used / revoked times. The token is 32 random bytes (`mm_` + url-safe text), so a plain hash is enough. It is shown **once**, at creation.
-- `python -m scripts.api_token create "<name>"`, `list` (never shows the secret), `revoke <token_id>`, `revoke --all`. Uses `DATABASE_URL` (Neon for production). Also runnable on Fly: `fly ssh console -C "python -m scripts.api_token list"` (the scripts are in the image).
+- `python -m scripts.api_token create "<name>"`, `list` (never shows the secret), `revoke <token_id>`, `revoke --all`. Uses `DATABASE_URL` (Neon for production). Run it from your laptop (Neon); free Render instances have no shell.
 - Revocation applies on the next request. A lost phone: revoke, create a new token, update the phone variable (section 8).
 - No rate limit or lockout (a 256-bit random token is not guessable); flagged in section 10.
 
@@ -110,18 +110,16 @@ Cheap enough, so built. A shared item gets a `telegram_threads` row for chat = `
 
 ## 7. Deploy and live check (Braj; PowerShell)
 
-Nothing here needs a secret change. Run each step and compare with "You should see".
+**Host: Render free (decision §5.22).** First do the Render and cron-job.org setup in `mini-me-dev-hosting.md` (sections 2 to 4), so that `https://<your-render-url>/healthz` answers. Then:
 
-1. **Get the code.** `cd <your path>\mini-me` then `conda activate <your env name>`, then `git pull origin main`.
-   You should see the new files (`app/share/…`, `scripts/api_token.py`, `scripts/share_smoke.py`). **Do not `git add .`** on your laptop (your local `fly.toml`, `.dockerignore`, `.github/workflows/fly-deploy.yml` are changed on purpose).
-2. **Install and test.** `pip install -e ".[dev]"`. Remove the reasoning-effort variable for the test run: `Remove-Item Env:OPENAI_COMPAT_REASONING_EFFORT -ErrorAction SilentlyContinue`, then `python -m pytest`. You should see `320 passed`.
-3. **Deploy.** `fly deploy`. You should see it build, run the release command (`python -m app.migrate`, which creates the `api_tokens` table), and end with the app running. Then `fly status`: one machine `started` or `stopped` (scale-to-zero is normal). If it shows 2 machines: `fly scale count 1 --yes`.
-4. **Make a token.** `.env` must hold the Neon `DATABASE_URL`, as for the seed script. Run `python -m scripts.api_token create "phone shortcut"`. You should see `Created tk_… (phone shortcut).` and a line starting `mm_`. **Copy that line now; it is shown once.** To copy without showing it on screen again: `python -m scripts.api_token create "phone shortcut" | Select-String '^mm_' | ForEach-Object { $_.Line } | Set-Clipboard` (then paste it into the phone variable in section 8, and clear your clipboard after).
-5. **Smoke test with a made-up message.**
-   `$env:MINI_ME_TOKEN = '<paste token>'` then `python -m scripts.share_smoke --url https://mini-me.fly.dev`.
-   You should see seven `[OK]` lines and `All checks passed.` (the first call can take about 5 s: cold start). The draft line shows a Hinglish draft if the self-model note is active. Any `[FAIL]` line: copy it to me.
-6. **Check the log in Telegram.** Send the bot `/events`. You should see `message_received`, `draft_generated`, `autonomy_decision`, `draft_shown`, `draft_copied` for the shortcut drafts. Send `/pending`: the unconfirmed shared drafts appear as cards. Tap **Not replying** on them (they are smoke-test items) so they do not sit in your numbers. You should see "Marked: not replying".
-7. Clear the variable: `Remove-Item Env:MINI_ME_TOKEN`.
+1. **Token.** In the repo folder with the env active (`.env` holds the Neon `DATABASE_URL`; Neon did not change):
+   `python -m scripts.api_token create "phone shortcut" | Select-String '^mm_' | ForEach-Object { $_.Line } | Set-Clipboard`
+   You should see no output; the token is on your clipboard and shown only once. `python -m scripts.api_token list` should show one `tk_…` row.
+2. **Smoke test with a made-up message.**
+   `$env:MINI_ME_TOKEN = (Get-Clipboard).Trim()` then `python -m scripts.share_smoke --url https://<your-render-url>`.
+   You should see seven `[OK]` lines and `All checks passed.` (the first call after sleep can take up to a minute). Any `[FAIL]` line: copy it to me. Then `Remove-Item Env:MINI_ME_TOKEN`.
+3. **Check the log in Telegram.** `/events` shows `message_received`, `draft_generated`, `autonomy_decision`, `draft_shown`, `draft_copied`. `/pending` shows the smoke drafts as cards: tap **Not replying** on each so test items stay out of your numbers.
+4. **Sweep check.** In cron-job.org, open the job's history: runs every 10 minutes with HTTP 200.
 
 ## 8. Android setup: HTTP Shortcuts (phone)
 
@@ -139,10 +137,10 @@ You should see three variables in the list.
 
 **C. Shortcut "Mini Me".** Back on the main screen: **+** → **Regular HTTP Shortcut** → **Create from scratch**.
 1. Name: `Mini Me`.
-2. Method **POST**. URL: `https://mini-me.fly.dev/api/draft?format=text`.
+2. Method **POST**. URL: `https://<your-render-url>/api/draft?format=text`.
 3. Request headers → add: name `Authorization`, value `Bearer ` (with the space) then tap **{ }** and pick `mini_me_token`. You should see the variable appear in purple after `Bearer `.
 4. Request body → type **Custom Text** *(label may differ)*; in the body field tap **{ }** and pick `share_text`; content type `text/plain` *(label may differ)*. You should see only the purple `share_text` placeholder in the body.
-5. Request timeout: set **60 seconds** *(label may differ; the default is short and the first call after idle needs about 5 s)*.
+5. Request timeout: set **90 seconds** *(label may differ; the default is short and the first call after a long idle can take up to a minute on the free host)*.
 6. Response handling: choose the option that shows **nothing** (silent) *(label may differ)*. The script below shows the result.
 7. **Trigger & Execution Settings**: tick **Direct Share** (Android 11 or newer) so "Mini Me" appears in the share sheet. Do **not** choose "run in the background": Android blocks clipboard access in the background.
 8. **Scripting** → **Run on Success**. Paste exactly:
@@ -174,27 +172,27 @@ if (response && response.statusCode == 409) {
 ```
 10. Save (✓).
 
-**D. Shortcut "Mini Me copied".** **+** → **Regular HTTP Shortcut** → **Create from scratch**. Name `Mini Me copied`. Method **POST**. URL `https://mini-me.fly.dev/api/draft/` then **{ }** → `message_id`, then type `/copied`. You should see `…/api/draft/` + purple `message_id` + `/copied`. Header `Authorization` = `Bearer ` + `mini_me_token` (as above). No body. Response handling: nothing shown. Save. (It only runs when "Mini Me" calls it; it logs `draft_copied` after the copy worked.)
+**D. Shortcut "Mini Me copied".** **+** → **Regular HTTP Shortcut** → **Create from scratch**. Name `Mini Me copied`. Method **POST**. URL `https://<your-render-url>/api/draft/` then **{ }** → `message_id`, then type `/copied`. You should see `…/api/draft/` + purple `message_id` + `/copied`. Header `Authorization` = `Bearer ` + `mini_me_token` (as above). No body. Response handling: nothing shown. Save. (It only runs when "Mini Me" calls it; it logs `draft_copied` after the copy worked.)
 
 **E. Test with WhatsApp "Message yourself" (made-up message only).**
 1. WhatsApp → new chat (pencil / chat icon) → your own name marked (You) = "Message yourself".
 2. Type `Is the club meet on Friday at 5? Call Test on 9876543210` and send.
 3. Long-press that message → three-dot menu → **Share** *(if you cannot find Share, see Troubleshooting)* → **Mini Me**.
-   You should see HTTP Shortcuts flash briefly, then a notification "Draft copied (… confidence)" with the draft text. First call after idle can take about 5 s.
+   You should see HTTP Shortcuts flash briefly, then a notification "Draft copied (… confidence)" with the draft text. First call after a long idle can take up to a minute; the 10-minute scheduler normally keeps the app awake.
 4. In the same chat, tap the message box, long-press → **Paste**. You should see the draft (with the phone number as the real one, if the draft used it). Delete it or send it to yourself; nothing goes to anyone else.
 5. In Telegram, send the bot `/events`: you should see `draft_copied`. Send `/pending`: the draft shows as a card. Tap **✓ Sent as is** or **Not replying**; you should see "✓ Recorded: sent as is" or "Marked: not replying".
 6. Ask-first check: send yourself `Please pay Rs 500 for the hall` and share it the same way. You should see a dialog "Mini Me asks you first: this looks like it involves money." and **no** draft on the clipboard.
 
-**F. Lost phone or leaked token.** On your laptop (PowerShell, repo folder, env active): `python -m scripts.api_token list` → find the row (name and `last used`) → `python -m scripts.api_token revoke tk_<id>` (or `python -m scripts.api_token revoke --all`). You should see "Revoked tk_… It stops working on the next request." Test: share again from the phone; you should see "The token was refused…". Then `python -m scripts.api_token create "phone shortcut"` and paste the new token into the `mini_me_token` variable (HTTP Shortcuts → menu → Global Variables → `mini_me_token`). If your laptop is not at hand: `fly ssh console -C "python -m scripts.api_token revoke --all"`.
+**F. Lost phone or leaked token.** On your laptop (PowerShell, repo folder, env active): `python -m scripts.api_token list` → find the row (name and `last used`) → `python -m scripts.api_token revoke tk_<id>` (or `python -m scripts.api_token revoke --all`). You should see "Revoked tk_… It stops working on the next request." Test: share again from the phone; you should see "The token was refused…". Then `python -m scripts.api_token create "phone shortcut"` and paste the new token into the `mini_me_token` variable (HTTP Shortcuts → menu → Global Variables → `mini_me_token`).  Free Render instances have no shell, so token commands run from your laptop (they talk to Neon directly).
 
 **Troubleshooting.**
 - *No "Mini Me" in the share sheet:* confirm **Direct Share** is ticked (Android 11+). Otherwise share to **HTTP Shortcuts** itself and pick the shortcut from its list.
 - *WhatsApp has no Share item:* select the message, tap **Copy**, then use a shortcut that reads the clipboard instead (HTTP Shortcuts has a "Clipboard Content" variable type; use it in place of `share_text`). Tell me and I will give exact steps.
 - *"could not copy" dialog:* Android blocks the clipboard when an app runs in the background. Make sure the shortcut is not set to run in the background.
-- *Nothing happens / timeout:* the app may be waking from idle. Share again after 10 s. Check `fly logs`.
+- *Nothing happens / timeout:* the app may be waking from idle. Share again after 10 s. Check the Logs tab of the Render service.
 - *Draft in English:* the self-model voice note controls this (see the drafting doc section 14), not this feature.
 
-## 9. Tests (46 new; 320 in total, all passing on SQLite)
+## 9. Tests (46 new here + 9 for hosting; 329 in total, all passing on SQLite)
 
 Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI create / list / revoke (the secret is never listed). Auth: wrong, missing, non-bearer, revoked all 401 with **nothing stored** (no records, events, threads; the text and phone number are in no table; the drafter is never reached); 401 before a bad body; copied call needs a token. Draft path: plain-text response is just the draft, record fields and event order, origin `shared`, contact `unknown`, no contact-based limit, **no shadow would-have-sent**, **never blind over 25 shares** and tagged `blind_eligible: false`, **masked before storage and before the model** (phone and email in no table), **real values only in the response**, ambiguous token left unrestored, JSON contract fields, Accept header, JSON / form / url / title bodies, empty / too long / reserved channel / bad JSON, text not read from the URL. Ask first: money (three phrasings), emotional, custom topic (names itself), ordinary group queries not blocked, confidence floor off then on, nothing to copy, drafter never called. Guard: the **real** Gemini client refuses with the mode off and nothing is sent; own-data mode declares the text own and the provider flags stay False; drafter crash and `rate_limited` are clean failures with `outcome_unknown`. `draft_copied`: not logged by the draft call, logged by the copied call only, outcome stays waiting, no `draft_sent` / `draft_acted`, copy again, idempotent retry, 404 / 409. Sweep: 23 h nothing, 25 h → `outcome_unknown` (never scored) for draft and ask-first, no-Telegram-chat share survives the sweep. `/pending`: card and buttons, no resend, Sent as is, Not replying (and a second tap), `/sent #N`, plain `/sent` untouched, ask-first listed without a card, no nudge. Stats: shortcut kept out of shown-vs-blind; ask-first-without-draft counted. Enums and the web-share service path.
 **Not run:** tests on Postgres (same as Dev 1–5); the real model through `/api/draft`; any phone. A local end-to-end run with the stub drafter on a real uvicorn server passed the smoke script (all seven checks).
@@ -209,7 +207,7 @@ Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI 
 3. **No technical block on sharing real group messages** from the shortcut before D3b / M2 (own-data mode only declares). The only guard is Braj's rule. A technical guard (for example, require a token flag or a per-share confirm) is a product call.
 4. **Real values in drafts** rely on un-numbered tokens today: a draft token is restored only if every value behind it is the same; otherwise it stays a token and is reported. Numbered tokens and the encrypted mapping (D3b) fix this. Names are not masked yet, so they are sent to the model and stored masked-as-written until D3b.
 5. **Telegram `/pending` cards** put the masked draft into the Telegram chat (Telegram already holds masked drafts). Stated for the privacy record.
-6. **Sweep depends on Telegram being enabled** (background loop and webhook). Fine for production; a web-only deployment would need its own sweep. Dev 7 confirm (design flag F5): the sweep covers held blind items; nothing counts held items in a nudge yet.
+6. **Sweep now runs from an outside scheduler** (`POST /tasks/sweep`, §5.22), which also keeps the free instance awake; it needs the Telegram bot configured (else 503). Free-tier limits are in `mini-me-dev-hosting.md` section 5. Dev 7 confirm (design flag F5): the sweep covers held blind items; nothing counts held items in a nudge yet.
 7. **"Sent as is" on a shared card is self-reported**, and `time_to_action_ms` starts when the draft was made, not when the card appeared (design F6).
 8. **Domain value mismatch** persists: shortcut records use `club`, Telegram records `group_queries`. `/stats` does not group by domain, so nothing breaks now; D6b aligns.
 9. **No token rate limit** (not needed for a 256-bit token on a single-user app).
@@ -221,6 +219,6 @@ Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI 
 
 New: `app/share/{__init__,tokens,limits,restore,service,router}.py`, `scripts/api_token.py`, `scripts/share_smoke.py`, `tests/test_share.py`, this doc.
 Changed: `app/events/schema.py` (enums), `app/events/writer.py` (`not_replying` once per message), `app/privacy/masking.py` (+`mask_with_values`; `mask_text` unchanged), `app/db.py` (+`api_tokens`), `app/config.py` (+`SHARE_*`), `app/main.py` (router), `app/telegram/{bot,store,format}.py` (section 6), `app/results/stats.py` (never-blind line, ask-first-without-draft).
-Commits on `main`: `63c7243` (enums), `134ecec` (tokens + CLI), `129d77f` (endpoint), `c411692` (Telegram capture), `58838b6` (stats), `e11ccb0` (tests), then the smoke script and this doc.
+Commits on `main`: `63c7243` (enums), `134ecec` (tokens + CLI), `129d77f` (endpoint), `c411692` (Telegram capture), `58838b6` (stats), `e11ccb0` (tests), `eb616fa` (smoke script), `83f146b` (this doc), `21bc5a7` (Render move: `/tasks/sweep`, `PUBLIC_BASE_URL`, `$PORT`, `tests/test_hosting.py`).
 
-Config (Fly secrets / env; all optional): `SHARE_DEFAULT_DOMAIN` (club), `SHARE_MAX_CHARS` (4000), `SHARE_ALWAYS_ASK_TOPICS` (empty), `SHARE_CONFIDENCE_FLOOR` (unset = off). Set with `fly secrets set SHARE_ALWAYS_ASK_TOPICS="fees"`.
+Config (Render environment variables; all optional): `SHARE_DEFAULT_DOMAIN` (club), `SHARE_MAX_CHARS` (4000), `SHARE_ALWAYS_ASK_TOPICS` (empty), `SHARE_CONFIDENCE_FLOOR` (unset = off). Set in the Render service's Environment tab (for example `SHARE_ALWAYS_ASK_TOPICS` = `fees`), then it redeploys.
