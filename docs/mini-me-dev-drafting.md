@@ -2,6 +2,8 @@
 
 _Built 7 Nov 2026, updated 9 Nov · Spoke: Dev 3 Self-model + drafting · Status: code complete, **183 tests passing on SQLite**, on `main`, **deployed to Fly and run against a real model** (Groq `openai/gpt-oss-120b`, free tier) with made-up messages only. Prompt `drafter-v0.2` is live. Provider terms evidence gathered 9 Nov, decision still open (section 5). **Update 10 Nov (Dev 5 fix batch, section 14):** `DRAFTER_MAX_TOKENS` is really 1500 now; `drafter-v0.3` tried and not adopted; a voice note added to the self-model (tag `sm-0.1-287d59d0`) to fix Hinglish._
 
+> **Hosting update (11 Nov 2026, decision 5.22):** the app now runs on Render free, not Fly. Wherever this doc says Fly, `fly secrets set` or `fly deploy`, set the same variable in the Render service's Environment tab (it redeploys), and read `fly ssh console` as "run it from your laptop against Neon". See `mini-me-dev-hosting.md`.
+
 Source of truth: decisions 4 (steps 1-2), 5.2, 5.3 A, 5.10, 5.13, 5.14, 5.16, 5.17; design-core (rationale tone); foundation and Telegram docs; timeline D6a/D8a. Where the PRD differs, decisions win.
 
 ## 1. What was built

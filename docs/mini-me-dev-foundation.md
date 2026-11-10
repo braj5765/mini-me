@@ -2,6 +2,8 @@
 
 _Built 3 Nov 2026 · Spoke: Dev 1 Foundation · Status: code complete, 38 tests passing on SQLite; pushed to github.com/braj5765/mini-me (main); deployed to Fly at https://mini-me.fly.dev (region sin) on Neon Postgres; `/healthz` returns ok (3 Nov 2026)._
 
+> **Hosting update (11 Nov 2026, decision 5.22):** the app server moved from Fly.io to **Render's free web service** (Fly's trial ended). Neon Postgres is unchanged. Wherever this doc says Fly, Fly secrets, `fly deploy` or `mini-me.fly.dev`, read: Render, Render environment variables, auto-deploy from `main`, and your Render address. Tables are created when the app starts (no release command). Setup steps: `mini-me-dev-hosting.md`.
+
 Source of truth: decisions 5.7, 5.12, 5.13, 5.14, 5.15; PRD F26, NFR-6/7; timeline section 3. Where PRD and decisions differ, decisions win.
 
 ## 1. Stack (build-level choices)

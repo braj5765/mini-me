@@ -2,6 +2,8 @@
 
 _Built 3 Nov 2026, UX build 7 Nov 2026 · Spoke: Dev 2 Telegram bot · Status: **deployed on Fly (mini-me.fly.dev) and tested by Braj on real Telegram, 6 Nov**; 93 tests passing on SQLite (38 foundation + 55 for the bot). First build on 3 Nov; the 7 Nov build adds the chat-clarity changes from that testing (section 4a). **Updated 9 Nov (Dev 5, v0.1 fix batch):** the classifier hook's one-line note, `CLASSIFIER_NOTIFY`, `/stats` and `/events` are now live in the bot (section 12); `/events` shows IST. These supersede the stub wording elsewhere in this doc._
 
+> **Hosting update (11 Nov 2026, decision 5.22):** the bot now runs on **Render free**, not Fly. The webhook address comes from `PUBLIC_BASE_URL` (or Render's own address, `RENDER_EXTERNAL_URL`); `TELEGRAM_PUBLIC_BASE_URL` is only a last fallback and has no default. The 24 h sweep is triggered by an outside scheduler calling `POST /tasks/sweep` every 10 minutes (header `X-Sweep-Secret`, env `SWEEP_SECRET`), which also keeps the free instance awake; `POST /telegram/sweep` and the in-process loop still exist. Flag 5 in section 11 is resolved this way. Deploy steps in section 9 are replaced by `mini-me-dev-hosting.md`. Since 10 Nov the bot also has `/pending` cards, Not replying and `/sent #N` for shared drafts: see `mini-me-dev-share.md`.
+
 Source of truth: decisions 5.7, 5.7a (Telegram note), 5.13 pts 1–3 and 6, 5.14, 5.15 pt 3, 5.16; foundation doc; timeline section 3 (v0.1 rules). Where the PRD differs, decisions win.
 
 ## 1. What it is

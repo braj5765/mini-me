@@ -2,6 +2,8 @@
 
 _Built 9 Nov 2026 · Spoke: Dev 4 Classifier + results view · Status: **code complete, 261 tests passing on SQLite, pushed to `main`, deployed to Fly, checked by Braj on the real bot on 9 Nov.** Checks run: offline loop (29 made-up messages, all plumbing checks OK), live loop on the real model (all OK), Telegram `/help`, Sent as is, blind reply with edit (note shown), Discard, `/stats`, `/events`, `/events N`, and the Neon count query. **No open items: the 4 older edits were backfilled and `/stats` re-checked** (section 15). **M1 complete.** Checklist in section 10; test-run notes in section 15._
 
+> **Hosting update (11 Nov 2026, decision 5.22):** the app now runs on Render free, not Fly. Wherever this doc says Fly, `fly secrets set` or `fly deploy`, set the same variable in the Render service's Environment tab (it redeploys), and read `fly ssh console` as "run it from your laptop against Neon". See `mini-me-dev-hosting.md`.
+
 Source of truth: decisions 4 step 3, 5.4, 5.7, 5.10 mapping, 5.12, 5.13 pts 2/4/5, 5.15, 5.17, 5.18; foundation, Telegram and drafting docs; timeline section 3 (v0.1 rules, cut order, M1) and tasks D9a / D11a. Where the PRD differs, decisions win. No decision was changed; items that need a view are in section 14.
 
 ## 1. What was built
