@@ -46,11 +46,18 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""           # Fly secret
     telegram_webhook_secret: str = ""      # Fly secret; Telegram echoes it in a header on every call
     telegram_allowed_user_id: str = ""     # Braj's numeric Telegram id; empty = reject everyone
-    telegram_public_base_url: str = "https://mini-me.fly.dev"
+    # Public address of this app (5.22). On Render, RENDER_EXTERNAL_URL is set automatically; PUBLIC_BASE_URL wins if set.
+    # telegram_public_base_url is the older name, kept as a last fallback. No default hostname any more.
+    public_base_url: str = ""
+    render_external_url: str = ""
+    telegram_public_base_url: str = ""
     telegram_api_base: str = "https://api.telegram.org"
     telegram_blind_ratio: float = 0.2      # ~1 in 5 (5.15 pt 3) [adjustable after testing]
     telegram_capture_window_hours: float = 24.0  # no capture in this window -> outcome unknown [placeholder]
     telegram_sweep_minutes: float = 10.0   # background check for expired capture windows
+
+    # Outside scheduler (5.22): POST /tasks/sweep with header X-Sweep-Secret. Unset = endpoint answers 503.
+    sweep_secret: str = ""
 
     # Share-to-draft (Dev 6, decisions 5.20 / 5.21). Build-level placeholders.
     share_default_domain: str = "club"      # domain for shared drafts (5.18; group queries = club)
@@ -60,6 +67,11 @@ class Settings(BaseSettings):
     share_always_ask_topics: str = ""
     # Confidence floor (5.10 pt 2). Value deferred to post-testing (Q1): unset = floor off. Wired, not decided.
     share_confidence_floor: float | None = None
+
+    @property
+    def base_url(self) -> str:
+        """Where Telegram should send webhooks: PUBLIC_BASE_URL, else Render's own URL, else the old setting."""
+        return (self.public_base_url or self.render_external_url or self.telegram_public_base_url).rstrip("/")
 
     @property
     def sqlalchemy_url(self) -> str:

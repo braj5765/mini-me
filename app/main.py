@@ -10,6 +10,7 @@ from app import auth, db
 from app.config import get_settings
 from app.events import EventName, EventWriter
 from app.events.writer import make_key
+from app import tasks
 from app.share import router as share_router
 from app.telegram import router as tg_router
 from app.telegram import runtime as tg_runtime
@@ -39,6 +40,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Mini Me", version=get_settings().app_version, lifespan=lifespan)
 app.include_router(tg_router.router)
 app.include_router(share_router.router)
+app.include_router(tasks.router)
 
 
 def current_user(request: Request) -> str:

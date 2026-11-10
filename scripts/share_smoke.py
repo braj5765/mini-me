@@ -1,7 +1,7 @@
 """Live check of share-to-draft against a running app, with MADE-UP text only (Dev 6).
 
     $env:MINI_ME_TOKEN = '<your token>'          # PowerShell; keeps the token out of the command line
-    python -m scripts.share_smoke --url https://mini-me.fly.dev
+    python -m scripts.share_smoke --url https://<your-service>.onrender.com
 
 Checks, in order: /healthz; a wrong token gets 401; a made-up message gets a plain-text draft with the headers the
 shortcut reads; the copied call returns ok (it logs `draft_copied`); the JSON form works; a money message is asked
@@ -20,11 +20,14 @@ MONEY = "Please pay Rs 500 for the hall booking by tonight."
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", default="https://mini-me.fly.dev")
+    ap.add_argument("--url", default=os.environ.get("MINI_ME_URL", ""), help="your Render address, or set MINI_ME_URL")
     args = ap.parse_args(argv)
     token = os.environ.get("MINI_ME_TOKEN", "").strip()
     if not token:
         print("Set MINI_ME_TOKEN first (see the docstring).")
+        return 2
+    if not args.url:
+        print("Give the app address: --url https://<your-service>.onrender.com (or set MINI_ME_URL).")
         return 2
     base, ok = args.url.rstrip("/"), True
     auth = {"Authorization": f"Bearer {token}"}
