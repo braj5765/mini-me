@@ -234,7 +234,7 @@ Source: decisions 5.20, 5.21, 5.22, 5.23, 5.13, 5.15, 5.17, 5.18; design `mini-m
 | Question | Result |
 |---|---|
 | (a) Does WhatsApp offer Share / Mini Me for message text? | **No.** No Share item and no "Select text" for text. B stays "Copy, then Mini Me". |
-| (b) Can an HTTP Shortcuts Quick Settings tile read the clipboard? | **Pending Braj's result** (instructions sent). The home-screen icon works and is the fallback. |
+| (b) Can an HTTP Shortcuts Quick Settings tile read the clipboard? | **Yes** (Braj, 14 Nov): tile tap gives the "Draft copied" notification. **B's trigger is the Quick Settings tile** (enable "Allow triggering via Quick Settings Tile" in the shortcut's Trigger & Execution Settings, then add the tile in the Quick Settings panel). Home-screen icon stays as fallback. |
 | (c) Can an installed web app read the clipboard on a button tap? | **Yes.** C's entry screen is **Paste message**. A manual textarea is built as fallback. |
 
 ### 12.2 What is built
@@ -257,7 +257,7 @@ Source: decisions 5.20, 5.21, 5.22, 5.23, 5.13, 5.15, 5.17, 5.18; design `mini-m
 Copy-first guard (above). Test-mode label in the notification: HTTP Shortcuts "Run on Success" script reads header `X-Mini-Me-Test-Mode` and appends "Test mode — made-up or own messages only". The 409 copy-first message appears in the Run on Failure dialog.
 
 ### 12.5 Phone setup
-1. Chrome → open `https://mini-me-bm81.onrender.com/app/` → sign in. 2. Chrome menu → **Install app** (uninstall the old temporary "MM test" first). 3. Share target: in any app that offers Share for text, pick **Mini Me**. 4. WhatsApp: long-press message → Copy → open Mini Me → **Paste message**. 5. Quick Settings tile: HTTP Shortcuts → shortcut → add tile (result pending); the home-screen icon is the fallback.
+1. Chrome → open `https://mini-me-bm81.onrender.com/app/` → sign in. 2. Chrome menu → **Install app** (uninstall the old temporary "MM test" first). 3. Share target: in any app that offers Share for text, pick **Mini Me**. 4. WhatsApp: long-press message → Copy → open Mini Me → **Paste message**. 5. Quick Settings tile (chosen B trigger): HTTP Shortcuts → Mini Me → Edit → Trigger & Execution Settings → tick **Allow triggering via Quick Settings Tile** → save; then pull down the panel twice → pencil → drag the HTTP Shortcuts tile in. Copy the message in WhatsApp, tap the tile. Home-screen icon is the fallback.
 
 ### 12.6 Limits
 Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" behaviour unverified. Own or made-up messages only until D3b.
