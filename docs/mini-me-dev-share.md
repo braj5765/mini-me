@@ -223,3 +223,47 @@ Changed: `app/events/schema.py` (enums), `app/events/writer.py` (`not_replying` 
 Commits on `main`: `63c7243` (enums), `134ecec` (tokens + CLI), `129d77f` (endpoint), `c411692` (Telegram capture), `58838b6` (stats), `e11ccb0` (tests), `eb616fa` (smoke script), `83f146b` (this doc), `c7ab208` (`logged` flag fix), `3c23d2e` (phone verification notes), `21bc5a7` (Render move: `/tasks/sweep`, `PUBLIC_BASE_URL`, `$PORT`, `tests/test_hosting.py`).
 
 Config (Render environment variables; all optional): `SHARE_DEFAULT_DOMAIN` (club), `SHARE_MAX_CHARS` (4000), `SHARE_ALWAYS_ASK_TOPICS` (empty), `SHARE_CONFIDENCE_FLOOR` (unset = off). Set in the Render service's Environment tab (for example `SHARE_ALWAYS_ASK_TOPICS` = `fees`), then it redeploys.
+
+---
+
+## 12. Dev 7: the installable web app and capture (added 14 Nov)
+
+Source: decisions 5.20, 5.21, 5.22, 5.23, 5.13, 5.15, 5.17, 5.18; design `mini-me-design-core.md` (Ink & Apricot) and `mini-me-share-flow-design.md`. Live: https://mini-me-bm81.onrender.com/app/
+
+### 12.1 Phone test (Step 0, Braj's Android)
+| Question | Result |
+|---|---|
+| (a) Does WhatsApp offer Share / Mini Me for message text? | **No.** No Share item and no "Select text" for text. B stays "Copy, then Mini Me". |
+| (b) Can an HTTP Shortcuts Quick Settings tile read the clipboard? | **Pending Braj's result** (instructions sent). The home-screen icon works and is the fallback. |
+| (c) Can an installed web app read the clipboard on a button tap? | **Yes.** C's entry screen is **Paste message**. A manual textarea is built as fallback. |
+
+### 12.2 What is built
+- **Web app** at `/app/`: manifest (standalone, `share_target` POST to `/share-target`), service worker (static files only; never caches API or text), vanilla JS, mobile first, Ink & Apricot (light and dark), self-hosted Fraunces and Hanken Grotesk. Existing single-user login (cookie `mm_session`). Shared text is embedded in the page only as escaped JSON, never shown before login, never stored in the browser (no localStorage, IndexedDB, or cache); shown with `textContent` only.
+- **Screens:** sign in; home (Paste message + waiting list); Paste message (clipboard read on tap, manual fallback); share-target arrival; "Is this your reply?" (when a held item is open); drafting; **draft** (draft, confidence label, one-line why, big Copy, From: row); copied; noted; held; held-reply-received; reveal; ask first (with optional "share your reply"); draft failed (retry); offline (no queue, no retry); signed out; copy-first.
+- **Test-mode guard (5.23 pt 3, `TEST_MODE`, default on):** incoming text is masked, used for the draft, **not stored** (`incoming_text` is null, `message_received.text_kept=false`). Label "Test mode — made-up or own messages only" on the web draft, the shortcut JSON/header (`X-Mini-Me-Test-Mode`), the Telegram card; the waiting list says "message not kept in test mode". Removed at M2 by setting `TEST_MODE=false`.
+- **Copy-first guard (5.23 pt 1):** if the incoming text equals the last shown draft (masked or restored), nothing is created. Shortcut: HTTP 409 + `X-Mini-Me-Action: copy_first` (JSON: 200 with `action: copy_first`). Web: copy-first screen.
+- **Copy event:** `draft_copied` is logged by `POST /app/api/items/{id}/copied` only after the browser clipboard write succeeds. Copy is not sent.
+- **From: row (5.21 pt 1):** tagging a sender re-runs the decision server-side: a second `autonomy_decision` (`trigger=sender_tag`, `rerun_of=<first event_id>`); both are kept. Always draft-only. Content limits carry over from the first decision. New tables `sender_tags`, `item_tags`.
+- **Blind sample (5.21 pt 4):** web share only, `WEB_BLIND_RATIO` (default 0.1). The held draft is stored masked server side and never goes to the browser until the reply is captured and the user taps "Show my draft" (`draft_released_after_reply`). Shortcut has none. Held items get no Telegram card.
+- **Waiting list:** copied drafts and held drafts, soonest first, "Confirm within N h"; actions [Sent as is] [I edited it → paste] [Not replying]; outcomes are held 10 s with Undo then committed (`POST /app/api/confirm`). An edit identical to the draft counts as sent as is. 24 h unconfirmed → `outcome_unknown` via the existing sweep (covers held items; tested).
+- **Ask first:** optional "share your reply" → `draft_acted` with outcome `user_authored`, no score.
+- **Nudge:** `maybe_send_nudge` on the existing `/tasks/sweep`: once a day within 3 h after 20:00 IST, "N copied drafts waiting · Confirm within N h", a Review link to `/app/`, no message text, copied only (held excluded), logs `nudge_sent`.
+- **Restored values:** real values are restored only in the response, from an in-memory 30-minute cache; DB and logs stay masked.
+
+### 12.3 Events and fields added or used
+`message_received` payload: `origin` (`shared`/`pasted`), `entry` (`share`/`paste`), `text_kept`, `retry_of`. `draft_generated`: `blind_eligible`, `shown_state`. `draft_shown`: surface `web_app`. `draft_held_blind`, `draft_released_after_reply`, `draft_copied` (`copy_no`), `draft_acted` (`capture`: `button`/`paste`/`share`), `draft_sent`, `not_replying`, `autonomy_decision` (`trigger`, `rerun_of`), `outcome_unknown`, `nudge_sent`, `session_started` (`entry_screen`). Channel `web_share`, device `mobile`.
+
+### 12.4 B fixes
+Copy-first guard (above). Test-mode label in the notification: HTTP Shortcuts "Run on Success" script reads header `X-Mini-Me-Test-Mode` and appends "Test mode — made-up or own messages only". The 409 copy-first message appears in the Run on Failure dialog.
+
+### 12.5 Phone setup
+1. Chrome → open `https://mini-me-bm81.onrender.com/app/` → sign in. 2. Chrome menu → **Install app** (uninstall the old temporary "MM test" first). 3. Share target: in any app that offers Share for text, pick **Mini Me**. 4. WhatsApp: long-press message → Copy → open Mini Me → **Paste message**. 5. Quick Settings tile: HTTP Shortcuts → shortcut → add tile (result pending); the home-screen icon is the fallback.
+
+### 12.6 Limits
+Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" behaviour unverified. Own or made-up messages only until D3b.
+
+### 12.7 Tests
+`tests/test_web.py`: 42 new. **Total 371 passing** (329 before). Not run: Postgres, a real browser in the suite, and live verification (Braj's phone).
+
+### 12.8 Commits
+`dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests; clip-test `5afb12d`.
