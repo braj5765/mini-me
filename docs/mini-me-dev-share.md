@@ -177,7 +177,7 @@ if (response && response.statusCode == 409) {
 **E. Test with WhatsApp "Message yourself" (made-up message only).**
 1. WhatsApp → new chat (pencil / chat icon) → your own name marked (You) = "Message yourself".
 2. Type `Is the club meet on Friday at 5? Call Test on 9876543210` and send.
-3. Long-press that message → three-dot menu → **Share** *(if you cannot find Share, see Troubleshooting)* → **Mini Me**.
+3. **WhatsApp has no Share item for text messages** (verified on Braj's phone, 13 Nov). Long-press the message → tap **Copy** → open the **Mini Me** shortcut from the home-screen icon (HTTP Shortcuts → shortcut → add to home screen). The shortcut reads the clipboard through the global variable `clip_text` (type Clipboard Content) instead of `share_text`. Copy first: if the clipboard still holds the previous draft, the new draft is made from that draft.
    You should see HTTP Shortcuts flash briefly, then a notification "Draft copied (… confidence)" with the draft text. First call after a long idle can take up to a minute; the 10-minute scheduler normally keeps the app awake.
 4. In the same chat, tap the message box, long-press → **Paste**. You should see the draft (with the phone number as the real one, if the draft used it). Delete it or send it to yourself; nothing goes to anyone else.
 5. In Telegram, send the bot `/events`: you should see `draft_copied`. Send `/pending`: the draft shows as a card. Tap **✓ Sent as is** or **Not replying**; you should see "✓ Recorded: sent as is" or "Marked: not replying".
@@ -187,7 +187,7 @@ if (response && response.statusCode == 409) {
 
 **Troubleshooting.**
 - *No "Mini Me" in the share sheet:* confirm **Direct Share** is ticked (Android 11+). Otherwise share to **HTTP Shortcuts** itself and pick the shortcut from its list.
-- *WhatsApp has no Share item:* select the message, tap **Copy**, then use a shortcut that reads the clipboard instead (HTTP Shortcuts has a "Clipboard Content" variable type; use it in place of `share_text`). Tell me and I will give exact steps.
+- *WhatsApp has no Share item:* expected. Use the Copy flow in E3 (variable `clip_text`, home-screen icon). Share-sheet entry works only from apps that offer Share for text.
 - *"could not copy" dialog:* Android blocks the clipboard when an app runs in the background. Make sure the shortcut is not set to run in the background.
 - *Nothing happens / timeout:* the app may be waking from idle. Share again after 10 s. Check the Logs tab of the Render service.
 - *Draft in English:* the self-model voice note controls this (see the drafting doc section 14), not this feature.
@@ -211,7 +211,7 @@ Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI 
 7. **"Sent as is" on a shared card is self-reported**, and `time_to_action_ms` starts when the draft was made, not when the card appeared (design F6).
 8. **Domain value mismatch** persists: shortcut records use `club`, Telegram records `group_queries`. `/stats` does not group by domain, so nothing breaks now; D6b aligns.
 9. **No token rate limit** (not needed for a 256-bit token on a single-user app).
-10. **HTTP Shortcuts UI labels and the `getClipboardContent` check are unverified on a device.** The scripts follow the app's documentation (response object, `copyToClipboard`, `getClipboardContent`, `executeShortcut`, `showNotification`, `showDialog`, `setVariable`).
+10. **Verified on Braj's Android phone (13-14 Nov):** Copy-based drafting, notification "Draft copied (… confidence)", automatic second call logging `draft_copied` (same second as `draft_shown`), manual "Mini Me copied" run (`logged` true, `copy_no` 2), `/pending` cards, and the ask-first path (#48: `hard_limit_triggered`, no `draft_generated`). cron-job.org sweep returns 200 every 10 minutes. Not verified: Share-sheet entry (WhatsApp offers none for text). Also fixed during live test: `logged` flag on Postgres (commit c7ab208).
 11. **`conftest.py` untouched.** The pending `OPENAI_COMPAT_REASONING_EFFORT` reset still needs Braj's OK; new tests clear their own `SHARE_*` variables. Run `pytest` with that variable unset.
 12. **Dev 7 needs:** re-run after tagging (§5.21 pt 1), `nudge_sent` sender, web login route calling `create_share_draft`, restore after D3b, `share` / `paste` capture handling, blind 1 in 10 on `web_share`.
 
