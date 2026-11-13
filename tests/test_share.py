@@ -182,7 +182,7 @@ def test_plain_text_response_is_just_the_draft_and_the_record_is_right(api):
     assert rec["contact_type"] == "unknown" and rec["device_type"] == "mobile" and rec["mode"] == "shadow"
     assert rec["autonomy_decision"] == "draft_notify" and rec["shown_state"] == "shown"
     assert rec["outcome"] == "waiting" and rec["scorable"] is False
-    assert rec["incoming_text"] == MSG and rec["draft_text"] == "yes, see you at 5"
+    assert rec["incoming_text"] is None and rec["draft_text"] == "yes, see you at 5"   # test-mode guard (5.23 pt 3)
 
     names = [e["event_name"] for e in events(api.engine)]
     assert names == ["message_received", "draft_generated", "autonomy_decision", "draft_shown"]

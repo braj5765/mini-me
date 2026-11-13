@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api", tags=["share"])
 
 MAX_BODY_BYTES = 64 * 1024
 HDR_ID, HDR_ACTION, HDR_CONF = "X-Mini-Me-Message-Id", "X-Mini-Me-Action", "X-Mini-Me-Confidence"
+HDR_TEST = "X-Mini-Me-Test-Mode"   # "on" while the test-mode guard is on (5.23 pt 3); the shortcut shows the label
 
 
 def require_token(request: Request) -> dict:
@@ -92,6 +93,11 @@ def _ascii(value: str) -> str:
 
 def _text_response(out: ShareOutcome) -> Response:
     base = {HDR_ID: out.message_id, HDR_ACTION: out.action}
+    if out.test_mode:
+        base[HDR_TEST] = "on"
+    if out.action == "copy_first":
+        # Copy-first guard (5.23 pt 1): not 2xx, so the clipboard is never overwritten with this note.
+        return PlainTextResponse(out.message or "", status_code=409, headers={HDR_ACTION: "copy_first", **({HDR_TEST: "on"} if out.test_mode else {})})
     if out.action == "draft":
         # Just the draft, ready to paste. Confidence is a header so a script can show it.
         return PlainTextResponse(out.draft or "", headers={**base, HDR_CONF: _ascii(out.confidence_label or "")})
@@ -106,20 +112,27 @@ def _json_response(out: ShareOutcome) -> Response:
     body = {
         "message_id": out.message_id, "action": out.action, "channel": out.channel, "domain": out.domain,
         "contact_type": service.CONTACT_TYPE, "masked_text": out.masked_text, "masked_count": out.masked_count,
-        "confirm_within_hours": out.window_hours,
+        "confirm_within_hours": out.window_hours, "shown_state": out.shown_state,
+        "test_mode": out.test_mode, "test_mode_label": service.TEST_MODE_LABEL if out.test_mode else None,
     }
     status = 200
-    if out.action == "draft":
+    if out.action == "copy_first":
+        body.update(draft=None, message=out.message)
+    elif out.action == "draft" and out.shown_state == "blind":
+        # Held (web share blind sample): no draft, confidence or why until the reply has been captured.
+        body.update(action="held", draft=None)
+    elif out.action == "draft":
         body.update(
             draft=out.draft, confidence_label=out.confidence_label, confidence=out.confidence, why=out.why,
-            shown_state="shown", unrestored_tokens=out.unrestored,
+            unrestored_tokens=out.unrestored,
             copied_path=f"/api/draft/{out.message_id}/copied")
     elif out.action == "ask_first":
         body.update(draft=None, reason=out.reason)
     else:
         status = 502
         body.update(draft=None, error=out.error, message=fmt.draft_failed(out.error or "error"))
-    return JSONResponse(body, status_code=status, headers={HDR_ID: out.message_id, HDR_ACTION: out.action})
+    return JSONResponse(body, status_code=status,
+                        headers={HDR_ID: out.message_id, HDR_ACTION: body["action"], **({HDR_TEST: "on"} if out.test_mode else {})})
 
 
 @router.post("/draft")

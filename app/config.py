@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     # Confidence floor (5.10 pt 2). Value deferred to post-testing (Q1): unset = floor off. Wired, not decided.
     share_confidence_floor: float | None = None
 
+    # Dev 7 (decisions 5.21, 5.23). Build-level placeholders.
+    # Test-mode guard (5.23 pt 3): until D3b / M2 the shared incoming text is masked, used for the draft, then NOT
+    # stored, and every draft says "Test mode". Removed at M2 (set TEST_MODE=false only then).
+    test_mode: bool = True
+    web_blind_ratio: float = 0.1            # ~1 in 10 on web share (5.21 pt 4) [adjustable after testing]
+    restore_cache_minutes: float = 30.0     # in-memory only: how long a draft screen can be re-opened with real values
+    checkin_time: str = "20:00"             # daily check-in (5.12 pt 2), local time; the Telegram nudge goes out then
+    checkin_timezone: str = "Asia/Kolkata"
+    nudge_window_hours: float = 3.0         # the nudge is sent only within this long after the check-in time
+
     @property
     def base_url(self) -> str:
         """Where Telegram should send webhooks: PUBLIC_BASE_URL, else Render's own URL, else the old setting."""

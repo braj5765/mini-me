@@ -126,6 +126,30 @@ api_tokens = Table(
 )
 
 
+# Sender tags for the "From:" row (Dev 7, 5.17 pt 1). A tag is a short label the user typed ("Cultural committee").
+# Stored as the user's own words (masked for phones / emails). Messages never store the label: they get the
+# tag's pseudonym. New tables: create_all adds them; nothing existing changes.
+sender_tags = Table(
+    "sender_tags", metadata,
+    Column("tag_id", String(16), primary_key=True),          # st_ + 10 hex
+    Column("user_id", String(64), nullable=False),
+    Column("label", String(60), nullable=False),
+    Column("kind", String(12), nullable=False),              # individual | group
+    Column("domain", String(64), nullable=False),            # remembered domain (5.18); default club
+    Column("pseudonym", String(32), nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("last_used_at", DateTime(timezone=True)),
+)
+
+# Which tag an item carries (for the waiting list's "group" line). One row per item.
+item_tags = Table(
+    "item_tags", metadata,
+    Column("message_id", String(64), primary_key=True),
+    Column("tag_id", String(16), nullable=False),
+    Column("tagged_at", DateTime(timezone=True), nullable=False),
+)
+
+
 @lru_cache
 def get_engine() -> Engine:
     return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True, future=True)

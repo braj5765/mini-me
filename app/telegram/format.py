@@ -66,10 +66,17 @@ def ref(masked_incoming: str | None) -> str:
     return f'"{snippet(masked_incoming or "", 40)}"'
 
 
-def draft_message(d: DraftResult, number: int | None = None, masked_incoming: str | None = None) -> str:
+TEST_MODE_LABEL = "Test mode \u2014 made-up or own messages only"
+NOT_KEPT = "message not kept in test mode"
+
+
+def draft_message(d: DraftResult, number: int | None = None, masked_incoming: str | None = None,
+                  *, test_mode: bool = False) -> str:
     tag = " (stub: placeholder until real drafting is built)" if d.is_stub else ""
     head = f"Draft #{number}{tag}" if number else f"Draft{tag}"
-    re_line = f"Re: {ref(masked_incoming)}\n" if masked_incoming else ""
+    if test_mode:   # 5.23 pt 3: shared incoming text is not kept; every draft says so
+        head += f"\n{TEST_MODE_LABEL}"
+    re_line = f"Re: {ref(masked_incoming)}\n" if masked_incoming else (f"Re: ({NOT_KEPT})\n" if test_mode else "")
     return (
         f"{head}\n{re_line}"
         f"Confidence: {confidence_label(d.confidence)} {confidence_bar(d.confidence)} ({d.confidence:.2f})\n"
@@ -102,7 +109,8 @@ def pending_list(items: list[tuple[int, str, str]]) -> str:
         return NOTHING_WAITING
     lines = [f"{len(items)} waiting for you:"]
     for n, text, state in items[:10]:
-        lines.append(f"#{n} · {ref(text)}" + _PENDING_MARK.get(state, ""))
+        shown = ref(text) if text else (f"({NOT_KEPT})" if state.startswith("shared") else ref(text))
+        lines.append(f"#{n} · {shown}" + _PENDING_MARK.get(state, ""))
     if len(items) > 10:
         lines.append(f"...and {len(items) - 10} more.")
     return "\n".join(lines)
