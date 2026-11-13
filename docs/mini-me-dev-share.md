@@ -235,7 +235,7 @@ Source: decisions 5.20, 5.21, 5.22, 5.23, 5.13, 5.15, 5.17, 5.18; design `mini-m
 |---|---|
 | (a) Does WhatsApp offer Share / Mini Me for message text? | **No.** No Share item and no "Select text" for text. B stays "Copy, then Mini Me". |
 | (b) Can an HTTP Shortcuts Quick Settings tile read the clipboard? | **Yes** (Braj, 14 Nov): tile tap gives the "Draft copied" notification. **B's trigger is the Quick Settings tile** (enable "Allow triggering via Quick Settings Tile" in the shortcut's Trigger & Execution Settings, then add the tile in the Quick Settings panel). Home-screen icon stays as fallback. |
-| (d) "Back to WhatsApp" (design §8 note 6) | Button does not switch apps; shows the Android Back gesture prompt. |
+| (d) "Back to WhatsApp" (design §8 note 6) | First build (`window.close`): did not switch apps. Fixed (14 Nov, `2ffb594`): the button opens WhatsApp through an `intent://…package=com.whatsapp` link, with a recent-apps hint if the phone refuses. **Works on Braj's phone** (opens WhatsApp's chat list, not the specific chat). |
 | (c) Can an installed web app read the clipboard on a button tap? | **Yes.** C's entry screen is **Paste message**. A manual textarea is built as fallback. |
 
 ### 12.2 What is built
@@ -261,10 +261,10 @@ Copy-first guard (above). Test-mode label in the notification: HTTP Shortcuts "R
 1. Chrome → open `https://mini-me-bm81.onrender.com/app/` → sign in. 2. Chrome menu → **Install app** (uninstall the old temporary "MM test" first). 3. Share target: in any app that offers Share for text, pick **Mini Me**. 4. WhatsApp: long-press message → Copy → open Mini Me → **Paste message**. 5. Quick Settings tile (chosen B trigger): HTTP Shortcuts → Mini Me → Edit → Trigger & Execution Settings → tick **Allow triggering via Quick Settings Tile** → save; then pull down the panel twice → pencil → drag the HTTP Shortcuts tile in. Copy the message in WhatsApp, tap the tile. Home-screen icon is the fallback.
 
 ### 12.6 Limits
-Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" tested on Braj's phone (14 Nov): the button does not open WhatsApp; it shows "use the Android Back gesture" (the designed fallback). Whether the Back gesture returns to the chat is still to be confirmed. Own or made-up messages only until D3b.
+Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" opens WhatsApp but not the specific chat (no deep link to a chat from a shared text). Own or made-up messages only until D3b.
 
 ### 12.7 Tests
-`tests/test_web.py`: 42 new. **Total 371 passing** (329 before). Not run: Postgres, a real browser in the suite, and live verification (Braj's phone).
+`tests/test_web.py`: 45 new. **Total 374 passing** (329 before). Not run: Postgres, a real browser in the suite. Live on Braj's phone (14 Nov): paste, draft, copy, waiting list, not replying (batch commit), ask first, copy-first guard, test-mode label, Quick Settings tile, Back to WhatsApp. Not yet verified live: share target (no app offers it for text) and the Telegram nudge (fires after 20:00 IST).
 
 ### 12.8 Commits
-`dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests; clip-test `5afb12d`.
+`dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests, `2ffb594` Back-to-WhatsApp intent, one `session_started` per login, copy time on waiting cards; clip-test `5afb12d`.
