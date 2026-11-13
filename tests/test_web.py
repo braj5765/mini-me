@@ -611,3 +611,22 @@ def test_session_logging_and_login_event(web):
 def test_enums_carry_the_capture_values():
     from app.events.schema import Capture, Channel
     assert Capture.share.value == "share" and Capture.paste.value == "paste" and Channel.web_share.value == "web_share"
+
+
+def test_waiting_list_cards_carry_a_local_copy_time(web):
+    mk(web, "Is the club meet on Friday?")
+    c = web.client.get("/app/api/pending").json()["items"][0]
+    assert len(c["clock"]) == 5 and c["clock"][2] == ":"
+
+
+def test_login_page_logs_one_session_started_and_the_app_does_not_add_a_second():
+    from pathlib import Path
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    after_login = js.split("res = await fetch('/login'")[1].split("go('home'")[0]
+    assert "logSession" not in after_login
+
+
+def test_back_to_whatsapp_opens_the_app_through_an_intent():
+    from pathlib import Path
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    assert "package=com.whatsapp" in js and "window.close" not in js

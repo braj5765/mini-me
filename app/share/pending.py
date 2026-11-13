@@ -45,6 +45,14 @@ def _tag_labels(engine: Engine, message_ids: list[str]) -> dict[str, dict]:
     return {r[0]: {"label": r[1], "kind": r[2]} for r in rows}
 
 
+def _clock(ts, settings) -> str | None:
+    """Local time of the copy (for example 02:36), so cards that look alike can be told apart."""
+    if not ts:
+        return None
+    from zoneinfo import ZoneInfo
+    return aware(ts).astimezone(ZoneInfo(settings.checkin_timezone)).strftime("%H:%M")
+
+
 def list_pending(engine: Engine, settings: Settings, *,
                  now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> dict:
     t_now = now()
@@ -75,6 +83,7 @@ def list_pending(engine: Engine, settings: Settings, *,
             "when": _ago(copies[-1]["occurred_at"] if copies else t.get("created_at"), t_now),
             "confirm_within_hours": _hours_left(t["deadline_at"], t_now),
             "deadline_at": aware(t["deadline_at"]).isoformat(),
+            "clock": _clock(copies[-1]["occurred_at"] if copies else t.get("created_at"), settings),
         }
         if not held:   # a held draft never shows its text, confidence or why
             card.update(draft=rec["draft_text"], draft_masked=True)

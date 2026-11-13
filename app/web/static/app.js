@@ -72,9 +72,12 @@
     S.idx = i;
     render(entry && !['drafting'].includes(entry.name) ? entry : { name: 'home', data: {} });
   });
-  function leave() {   // "Back to WhatsApp": close the app window; if the phone refuses, say what to do
-    try { window.close(); } catch (e) { /* ignore */ }
-    setTimeout(() => toast('Use the Android Back gesture to return to WhatsApp.'), 350);
+  function leave() {   // "Back to WhatsApp": ask Android to open WhatsApp; if the phone stays here, say how to switch
+    let left = false;
+    const mark = () => { if (document.hidden) left = true; };
+    document.addEventListener('visibilitychange', mark, { once: true });
+    try { window.location.href = 'intent://send/#Intent;scheme=whatsapp;package=com.whatsapp;end'; } catch (e) { /* ignore */ }
+    setTimeout(() => { if (!left && !document.hidden) toast('Could not open WhatsApp. Use your recent apps button to switch back.'); }, 900);
   }
   function toast(msg) {
     const t = h('div', { role: 'status', class: 'mm-card', style: 'position:fixed;left:18px;right:18px;bottom:96px;z-index:9' }, msg);
@@ -136,7 +139,6 @@
       try { res = await fetch('/login', { method: 'POST', body: fd, credentials: 'same-origin' }); } catch (e) { return go('offline', {}, { replace: true }); }
       if (!res.ok) { err.textContent = 'That password did not work. Try again.'; return; }
       S.session = await api('/app/api/session');
-      logSession(S.pending ? 'share' : 'home');
       if (S.pending) { const p = S.pending; S.pending = null; return routeIncoming(p.payload, p.entry, true); }
       go('home', {}, { replace: true });
     };
@@ -198,7 +200,7 @@
     const incoming = it.incoming ? masked(it.incoming) : h('p', { class: 'mm-small' }, '(' + (it.incoming_note || 'message not kept in test mode') + ')');
     const head = h('div', { class: 'mm-row', style: 'justify-content:space-between' },
       h('strong', null, it.group || 'Shared message'),
-      h('span', { class: 'mm-small' }, (it.kind === 'held' ? 'Shared ' : 'Copied ') + it.when));
+      h('span', { class: 'mm-small' }, (it.kind === 'held' ? 'Shared ' : 'Copied ') + it.when + (it.clock ? ' · ' + it.clock : '')));
     if (it.kind === 'held') {
       return h('section', { class: 'mm-card' }, head, h('p', { class: 'mm-small' }, 'Held draft, waiting for your reply'), incoming,
         h('div', { class: 'mm-hold' }, chip('Draft held', 'twin', '◔'),
@@ -412,7 +414,7 @@
       h('div', { class: 'mm-card mm-twin' }, h('p', { style: 'margin:0 0 8px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden' }, d.draft), again),
       h('div', { class: 'mm-card' }, h('h3', null, 'What happens next'), h('p', { class: 'mm-muted' }, 'Later I will ask what happened with it. It takes one tap.'),
         link('See waiting drafts', () => go('home')))],
-      bar: [btn('Back to WhatsApp', 'mm-primary', leave), h('p', { class: 'mm-small', style: 'text-align:center;margin:0' }, 'Or use the Android Back gesture.')] }));
+      bar: [btn('Back to WhatsApp', 'mm-primary', leave), h('p', { class: 'mm-small', style: 'text-align:center;margin:0' }, 'If it does not open, use your recent apps button.')] }));
   };
 
   async function notReplying(d) {
