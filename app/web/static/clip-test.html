@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1F2430">
+<link rel="manifest" href="/clip-test.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<title>Mini Me clipboard test</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#1F2430;color:#F4EFE8;margin:0;padding:20px;line-height:1.45}
+ button{font-size:18px;padding:16px;width:100%;margin:10px 0;border-radius:12px;border:0;background:#F2A65A;color:#1F2430;font-weight:600}
+ pre{white-space:pre-wrap;background:#2A3040;padding:12px;border-radius:8px}
+</style></head><body>
+<h2>Clipboard test</h2>
+<p>Made-up text only. Copy a made-up message first, then tap the button.</p>
+<button id="read">Read clipboard</button>
+<button id="write">Write test text to clipboard</button>
+<pre id="out">Waiting.</pre>
+<script>
+const out = document.getElementById('out');
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const lines = ['display-mode standalone: ' + standalone,
+  'secure context: ' + window.isSecureContext,
+  'clipboard.readText: ' + (!!(navigator.clipboard && navigator.clipboard.readText)),
+  'clipboard.writeText: ' + (!!(navigator.clipboard && navigator.clipboard.writeText))];
+out.textContent = lines.join('\n');
+function show(extra){ out.textContent = lines.join('\n') + '\n\n' + extra; }
+document.getElementById('read').onclick = async () => {
+  try { const t = await navigator.clipboard.readText();
+    show('READ OK. Length ' + t.length + '. First 60 chars:\n' + t.slice(0,60)); }
+  catch (e) { show('READ FAILED: ' + e.name + ' - ' + e.message); }
+};
+document.getElementById('write').onclick = async () => {
+  try { await navigator.clipboard.writeText('Mini Me write test'); show('WRITE OK'); }
+  catch (e) { show('WRITE FAILED: ' + e.name + ' - ' + e.message); }
+};
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/clip-test-sw.js').catch(()=>{});
+</script></body></html>

@@ -12,6 +12,7 @@ from app.events import EventName, EventWriter
 from app.events.writer import make_key
 from app import tasks
 from app.share import router as share_router
+from app.web import router as web_router
 from app.telegram import router as tg_router
 from app.telegram import runtime as tg_runtime
 
@@ -41,6 +42,7 @@ app = FastAPI(title="Mini Me", version=get_settings().app_version, lifespan=life
 app.include_router(tg_router.router)
 app.include_router(share_router.router)
 app.include_router(tasks.router)
+app.include_router(web_router.router)
 
 
 def current_user(request: Request) -> str:
