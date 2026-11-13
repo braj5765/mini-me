@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.config import get_settings
+from app.share.nudge import maybe_send_nudge
 from app.telegram.bot import BotDeps, sweep_expired
 from app.telegram.router import get_bot_deps
 
@@ -29,4 +30,10 @@ def sweep(deps: BotDeps = Depends(get_bot_deps)) -> dict:
     """Close capture windows that have passed with no sent text (`outcome_unknown`, never scored).
     Idempotent: each thread is claimed once, so repeat or overlapping calls change nothing.
     The secret is checked first, so a stranger learns nothing about the bot's configuration."""
-    return {"ok": True, "marked_unknown": sweep_expired(deps)}
+    out = {"ok": True, "marked_unknown": sweep_expired(deps)}
+    try:   # the check-in nudge rides on the same call (Dev 7); it never blocks the sweep
+        if maybe_send_nudge(deps):
+            out["nudge_sent"] = True
+    except Exception:  # noqa: BLE001
+        log.exception("nudge failed")
+    return out

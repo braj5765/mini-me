@@ -283,7 +283,7 @@ def _pending(chat_id: int, deps: BotDeps) -> None:
         if is_shared(t["message_id"]):
             if not rec.get("draft_text"):
                 state = "shared_ask_first"
-            elif t.get("prompt_tg_msg_id") is None:
+            elif t.get("prompt_tg_msg_id") is None and t["state"] != "blind_held":   # a held draft gets no card
                 state = "shared"
                 cards.append((t, rec))
         items.append((t["number"], rec.get("incoming_text") or "", state))
@@ -293,7 +293,8 @@ def _pending(chat_id: int, deps: BotDeps) -> None:
                             rationale=rec.get("rationale") or "", drafter="share", is_stub=False)
         try:
             prompt_id = deps.client.send_message(
-                chat_id, fmt.draft_message(draft, t["number"], rec.get("incoming_text")),
+                chat_id, fmt.draft_message(draft, t["number"], rec.get("incoming_text"),
+                                           test_mode=deps.settings.test_mode),
                 reply_markup=fmt.keyboard(t["message_id"], shared=True))
             deps.store.set_prompt(t["message_id"], prompt_id)
         except Exception:  # noqa: BLE001
