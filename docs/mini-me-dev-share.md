@@ -1,6 +1,6 @@
 # Mini Me — Dev 6: Share-to-draft backend + Android shortcut (§5.20 pt 7 steps a and b)
 
-_Built 10 Nov 2026, host moved 11 Nov 2026 · Spoke: Dev 6 · Status: code on `main` (commits `63c7243` … see section 11), **329 tests passing on SQLite** (274 before + 46 in `tests/test_share.py` + 9 in `tests/test_hosting.py`), run end to end locally against a real HTTP server with the stub drafter. **Hosting is now Render free (decision §5.22; see `mini-me-dev-hosting.md`); Fly.io is no longer used.** Not yet deployed or run on a phone: this session cannot reach Render or an Android phone. Setup, live check and the phone steps are for Braj (sections 7 and 8)._
+_Built 10 Nov 2026, host moved 11 Nov 2026 · Spoke: Dev 6 · Status: code on `main` (commits `63c7243` … see section 11), **329 tests passing on SQLite** (274 before + 46 in `tests/test_share.py` + 9 in `tests/test_hosting.py`), run end to end locally against a real HTTP server with the stub drafter. **Hosting is now Render free (decision §5.22; see `mini-me-dev-hosting.md`); Fly.io is no longer used.** Deployed on Render and verified on Braj's Android phone (13-14 Nov 2026), see flag 10._
 
 Source of truth: decisions §5.20, §5.21, §5.13 pts 2 and 5, §5.14, §5.16, §5.17, §5.18, §5.7; design-core (wording); share-flow design §6 and §8. Where this doc and a decision differ, the decision wins. No decision was changed; items needing a view are in section 10.
 
@@ -133,7 +133,8 @@ I could not open the app from this session. The names below come from the app's 
 1. Name `mini_me_token`. Value: paste the `mm_…` token. Tick **Treat value as secret** and **Exclude stored value from exports**. Save (✓ top right).
 2. Name `message_id`. Leave the value empty. Save. (The script fills it in each time.)
 3. Name `share_text`. Leave the value empty. Tick **Allow Receiving Value from Share Dialog**; in the dropdown that appears choose **text**. Save.
-You should see three variables in the list.
+4. (Copy flow, needed for WhatsApp) Name `clip_text`. Type **Clipboard Content**. Save. In shortcut C step 4 use `clip_text` in the body instead of `share_text`.
+You should see the variables in the list.
 
 **C. Shortcut "Mini Me".** Back on the main screen: **+** → **Regular HTTP Shortcut** → **Create from scratch**.
 1. Name: `Mini Me`.
@@ -195,7 +196,7 @@ if (response && response.statusCode == 409) {
 ## 9. Tests (46 new here + 9 for hosting; 329 in total, all passing on SQLite)
 
 Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI create / list / revoke (the secret is never listed). Auth: wrong, missing, non-bearer, revoked all 401 with **nothing stored** (no records, events, threads; the text and phone number are in no table; the drafter is never reached); 401 before a bad body; copied call needs a token. Draft path: plain-text response is just the draft, record fields and event order, origin `shared`, contact `unknown`, no contact-based limit, **no shadow would-have-sent**, **never blind over 25 shares** and tagged `blind_eligible: false`, **masked before storage and before the model** (phone and email in no table), **real values only in the response**, ambiguous token left unrestored, JSON contract fields, Accept header, JSON / form / url / title bodies, empty / too long / reserved channel / bad JSON, text not read from the URL. Ask first: money (three phrasings), emotional, custom topic (names itself), ordinary group queries not blocked, confidence floor off then on, nothing to copy, drafter never called. Guard: the **real** Gemini client refuses with the mode off and nothing is sent; own-data mode declares the text own and the provider flags stay False; drafter crash and `rate_limited` are clean failures with `outcome_unknown`. `draft_copied`: not logged by the draft call, logged by the copied call only, outcome stays waiting, no `draft_sent` / `draft_acted`, copy again, idempotent retry, 404 / 409. Sweep: 23 h nothing, 25 h → `outcome_unknown` (never scored) for draft and ask-first, no-Telegram-chat share survives the sweep. `/pending`: card and buttons, no resend, Sent as is, Not replying (and a second tap), `/sent #N`, plain `/sent` untouched, ask-first listed without a card, no nudge. Stats: shortcut kept out of shown-vs-blind; ask-first-without-draft counted. Enums and the web-share service path.
-**Not run:** tests on Postgres (same as Dev 1–5); the real model through `/api/draft`; any phone. A local end-to-end run with the stub drafter on a real uvicorn server passed the smoke script (all seven checks).
+**Not run:** tests on Postgres (same as Dev 1–5); the real model through `/api/draft` in the test suite (the live Render run used it). A local end-to-end run with the stub drafter on a real uvicorn server passed the smoke script (all seven checks).
 
 ## 10. Build-level choices and flags
 
@@ -219,6 +220,6 @@ Tokens: only the hash is stored, verify, revoke, revoke-all, name required, CLI 
 
 New: `app/share/{__init__,tokens,limits,restore,service,router}.py`, `scripts/api_token.py`, `scripts/share_smoke.py`, `tests/test_share.py`, this doc.
 Changed: `app/events/schema.py` (enums), `app/events/writer.py` (`not_replying` once per message), `app/privacy/masking.py` (+`mask_with_values`; `mask_text` unchanged), `app/db.py` (+`api_tokens`), `app/config.py` (+`SHARE_*`), `app/main.py` (router), `app/telegram/{bot,store,format}.py` (section 6), `app/results/stats.py` (never-blind line, ask-first-without-draft).
-Commits on `main`: `63c7243` (enums), `134ecec` (tokens + CLI), `129d77f` (endpoint), `c411692` (Telegram capture), `58838b6` (stats), `e11ccb0` (tests), `eb616fa` (smoke script), `83f146b` (this doc), `21bc5a7` (Render move: `/tasks/sweep`, `PUBLIC_BASE_URL`, `$PORT`, `tests/test_hosting.py`).
+Commits on `main`: `63c7243` (enums), `134ecec` (tokens + CLI), `129d77f` (endpoint), `c411692` (Telegram capture), `58838b6` (stats), `e11ccb0` (tests), `eb616fa` (smoke script), `83f146b` (this doc), `c7ab208` (`logged` flag fix), `3c23d2e` (phone verification notes), `21bc5a7` (Render move: `/tasks/sweep`, `PUBLIC_BASE_URL`, `$PORT`, `tests/test_hosting.py`).
 
 Config (Render environment variables; all optional): `SHARE_DEFAULT_DOMAIN` (club), `SHARE_MAX_CHARS` (4000), `SHARE_ALWAYS_ASK_TOPICS` (empty), `SHARE_CONFIDENCE_FLOOR` (unset = off). Set in the Render service's Environment tab (for example `SHARE_ALWAYS_ASK_TOPICS` = `fees`), then it redeploys.
