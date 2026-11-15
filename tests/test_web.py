@@ -298,10 +298,11 @@ def test_held_draft_is_not_sent_to_telegram_pending(web, monkeypatch):
 # ----------------------------------------------------------------------------- waiting list + confirm (5.21 pt 3)
 def test_waiting_list_lists_copied_and_held_with_test_mode_note(web, monkeypatch):
     a = mk(web, "Is the club meet on Friday?", copied=True)
-    mk(web, "Will you bring the banner?", copied=False)                   # never copied: not listed
+    n = mk(web, "Will you bring the banner?", copied=False)               # never copied: "Not copied" (5.24 pt 3)
     p = web.client.get("/app/api/pending").json()
-    assert [i["message_id"] for i in p["items"]] == [a] and p["copied"] == 1 and p["held"] == 0
-    c = p["items"][0]
+    assert {i["message_id"]: i["kind"] for i in p["items"]} == {a: "copied", n: "not_copied"}
+    assert p["copied"] == 1 and p["held"] == 0 and p["not_copied"] == 1
+    c = [i for i in p["items"] if i["message_id"] == a][0]
     assert c["kind"] == "copied" and c["incoming"] is None and c["incoming_note"] == "message not kept in test mode"
     assert c["confirm_within_hours"] in (23, 24) and c["draft"] and "[PHONE]" not in "x"
     monkeypatch.setenv("WEB_BLIND_RATIO", "1")
