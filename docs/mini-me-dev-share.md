@@ -264,7 +264,7 @@ Copy-first guard (above). Test-mode label in the notification: HTTP Shortcuts "R
 Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" opens WhatsApp but not the specific chat (no deep link to a chat from a shared text). Own or made-up messages only until D3b.
 
 ### 12.7 Tests
-`tests/test_web.py`: 45 new. **Total 374 passing** (329 before). Not run: Postgres, a real browser in the suite. Live on Braj's phone (14 Nov): paste, draft, copy, waiting list, not replying (batch commit), ask first, copy-first guard, test-mode label, Quick Settings tile, Back to WhatsApp. Not yet verified live: share target (no app offers it for text) and the Telegram nudge (fires after 20:00 IST).
+`tests/test_web.py`: 45 new. **Total 374 passing** (329 before). Not run: Postgres, a real browser in the suite. Live on Braj's phone (14 Nov): paste, draft, copy, waiting list, not replying (batch commit), ask first, copy-first guard, test-mode label, Quick Settings tile, Back to WhatsApp. Telegram nudge verified live (15 Nov, after 20:00 IST). Not yet verified live: share target (no app offers it for text).
 
 ### 12.8 Commits
-`dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests, `2ffb594` Back-to-WhatsApp intent, one `session_started` per login, copy time on waiting cards; clip-test `5afb12d`.
+`dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests, `2ffb594` Back-to-WhatsApp intent, one `session_started` per login, copy time on waiting cards; `591f0bc` Windows UTF-8 test fixes; `3a79981` launcher intent (reverted), `2005b2c` restore; clip-test `5afb12d`.
