@@ -261,10 +261,77 @@ Copy-first guard (above). Test-mode label in the notification: HTTP Shortcuts "R
 1. Chrome → open `https://mini-me-bm81.onrender.com/app/` → sign in. 2. Chrome menu → **Install app** (uninstall the old temporary "MM test" first). 3. Share target: in any app that offers Share for text, pick **Mini Me**. 4. WhatsApp: long-press message → Copy → open Mini Me → **Paste message**. 5. Quick Settings tile (chosen B trigger): HTTP Shortcuts → Mini Me → Edit → Trigger & Execution Settings → tick **Allow triggering via Quick Settings Tile** → save; then pull down the panel twice → pencil → drag the HTTP Shortcuts tile in. Copy the message in WhatsApp, tap the tile. Home-screen icon is the fallback.
 
 ### 12.6 Limits
-Never-copied drafts are not on the waiting list. No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" opens WhatsApp but not the specific chat (no deep link to a chat from a shared text). Own or made-up messages only until D3b.
+Never-copied drafts are not on the waiting list (superseded in Dev 7b: they now appear under "Not copied", section 13). No offline queue. Share target works only from apps that offer Share for text (not WhatsApp). The detail toggle is absent (D8b). "Back to WhatsApp" opens WhatsApp but not the specific chat (no deep link to a chat from a shared text). Own or made-up messages only until D3b.
 
 ### 12.7 Tests
 `tests/test_web.py`: 45 new. **Total 374 passing** (329 before). Not run: Postgres, a real browser in the suite. Live on Braj's phone (14 Nov): paste, draft, copy, waiting list, not replying (batch commit), ask first, copy-first guard, test-mode label, Quick Settings tile, Back to WhatsApp. Telegram nudge verified live (15 Nov, after 20:00 IST). Not yet verified live: share target (no app offers it for text).
 
 ### 12.8 Commits
 `dc0d409` guards and re-run, `a13efbb` capture, waiting list, tags, nudge, `e59656c` web app, `74952c6` tests, `2ffb594` Back-to-WhatsApp intent, one `session_started` per login, copy time on waiting cards; `591f0bc` Windows UTF-8 test fixes; `3a79981` launcher intent (reverted), `2005b2c` restore; clip-test `5afb12d`.
+
+---
+
+## 13. Dev 7b: sender-tag labels, New group, "Not copied" (added 15 Nov, decisions 5.24)
+
+Source: decisions 5.24 (pts 1 to 3), 5.13 pts 2 and 6, 5.14 pt 7, 5.16, 5.17 pt 1 and 4, 5.21, 5.23; design-core (Ink & Apricot, wording). Nothing was cut. No decision was changed; items needing a view are in 13.8.
+
+### 13.1 What was built
+1. **Sender-tag labels are encrypted** (`sender_tags.label_enc`, Fernet, `app/privacy/crypto.py`). The label is masked for phones / emails, then encrypted. It is never sent to a model, never in an event or a log (events and the waiting list refer to a tag by id / pseudonym; the label is decrypted only for the signed-in user's own screens). Tests prove it is in no other table and not in the log output.
+2. **Export my data / Delete everything** as functions plus a CLI (`app/privacy/data_controls.py`, `scripts/data_controls.py`). No Settings screen (U1 to U3). Tags are in the export (readable) and removed by delete.
+3. **Unused tags are deleted after 30 days** (`SENDER_TAG_RETENTION_DAYS`, default 30) by the existing `POST /tasks/sweep` (`tags_deleted` appears in its reply when it deletes). "Used" = a tag was applied to an item (`last_used_at`); never-applied counts from creation.
+4. **New group** chip next to **Someone new** on the From: row: `new_group` (own unique pseudonym, never becomes known, both decisions logged, content limits still apply). Someone new stays `new_individual`; untagged stays `unknown`. A label hint on the From: card: "Short labels like \u201cClub senior\u201d work best." (placeholder in the Add form too). **Telegram has no From: row**, so nothing was added there.
+5. **"Not copied"** section on the waiting list (web-app drafts that were shown but never copied; held drafts, ask-first, failed and shortcut drafts are not in it). Quiet heading, no count chip, not in the nudge. Two buttons: **Replied my own way** (optional paste screen) and **Not replying**. Same 10 s Undo batch as Dev 7 (`POST /app/api/confirm`, new action `replied_own`). Untouched for 24 h: `outcome_unknown` by the existing sweep (tested).
+
+### 13.2 Encryption, key and migration
+- Keys: `DATA_ENCRYPTION_KEY` (one or more Fernet keys, comma-separated; the first encrypts). A key derived from `APP_SECRET` is always the last key: the app works with no dedicated key (and in tests) but **set one** (13.6). When a dedicated key appears, the next start re-encrypts every label under it automatically (`app/migrations.py`, idempotent); `python -m scripts.data_controls rewrap-tags` does the same by hand.
+- **The 5.16 "encrypted pseudonym mapping" does not exist yet** (D3b), so there was no approach to copy. `app/privacy/crypto.py` is the helper D3b should reuse.
+- **Migration of existing plaintext tags** (`app/migrations.py`, run by `db.init_db()` at every start and by `python -m app.migrate`): adds `label_enc`; encrypts each label and reads it back; only if all read back, overwrites the plaintext and **drops the `label` column**; sets `label_enc` NOT NULL on Postgres. One transaction on Postgres (all or nothing; if it fails the app still starts and logs it, `python -m app.migrate` shows the error). Idempotent. Tested on SQLite and on a real Postgres 16 (legacy table, run twice, export, purge, delete). **Limit:** Postgres may keep the old text in unused storage until autovacuum and Neon keeps short-term history, so old plaintext can linger a little; optional: run `VACUUM FULL sender_tags;` in the Neon SQL editor. Today's labels are own or made-up.
+- Pseudonyms (HMAC of the label) are unchanged, so tags keep their identity. After a tag is purged, the pseudonym left in older message records cannot give the label back; retyping the same label gives the same pseudonym again (and "known" status if replies exist).
+
+### 13.3 Export / Delete (CLI, laptop PowerShell, repo folder, env active, `.env` has `DATABASE_URL` and the same `DATA_ENCRYPTION_KEY` as Render)
+- `python -m scripts.data_controls summary`: row counts per table, how many tag labels are readable with this key, whether a dedicated key is set.
+- `python -m scripts.data_controls export --out my-data.json`: message records, events, self-model items, sender tags (labels readable), item-tag links, Telegram thread ids / timers, API-token metadata (never a token or hash). Logs `data_exported` (counts only).
+- `python -m scripts.data_controls delete --confirm "delete everything"`: removes all of those tables (**including the self-model**; not API tokens or the login). Logs `data_deleted` (counts only). Flag 13.8-3.
+- `python -m scripts.data_controls rewrap-tags`.
+
+### 13.4 "Not copied": events and scoring
+- Replied my own way: `draft_acted` (`action: discarded`, `capture: button|paste`, `reply_shared`, `was_copied`) + `draft_discarded` (`reason: replied_own_way`); outcome `discarded`, scorable (counts as a discard in `/stats`). With a pasted reply it is stored masked in `sent_text` and handed to the classifier. No `draft_sent`.
+- **Classifier change (build-level, flagged):** `EditClassifier._skip_reason` now also reads a discard that carries a reply, so the classifier can learn from the gap between the unused draft and the reply (`edit_classified` payload has `outcome: discarded`). Stats ignore edit_class on discards, so the score stays a discard either way. A discard with no reply is still skipped. To undo: remove the `discard_with_reply` lines.
+- Not replying: as before (`not_replying`, never scored). The same two actions are accepted server-side for copied drafts too, but only Not copied shows Replied my own way.
+- The nudge counts copied drafts only (tested: 1 copied + 2 not copied gives "1 copied draft waiting"; only-not-copied sends nothing).
+
+### 13.5 Tests
+44 new in `tests/test_dev7b.py` (crypto, label encrypted and only readable through the app, label absent from every other table / events / logs / model requests, wrong key shows "(unreadable)", migration encrypt / idempotent / failure keeps plaintext / rerun finishes, re-wrap on key set, 30-day purge rules and the sweep, export / delete / CLI, New group, Not copied listing and actions, classifier on a discard with a reply, nudge). One Dev 7 test updated (it asserted never-copied drafts are not listed; 5.24 replaces that). **Total 418 passing** (374 before), run with `OPENAI_COMPAT_REASONING_EFFORT` unset; `tests/conftest.py` untouched. Also checked the page script in a jsdom run (list, own-way screen, queue, From row, New group call). Not run: the suite on Postgres, a real browser on the phone.
+
+### 13.6 Braj: set the key, deploy check (PowerShell, repo folder)
+1. `git pull origin main` should end with a fast-forward to the Dev 7b commits (`7be1a4f` to `39d2335`, then the docs commit). Then `pip install -e .` (adds `cryptography`).
+2. Make a key and put it on the clipboard: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" | Set-Clipboard`. Nothing prints; the key is on the clipboard.
+3. Render dashboard, your Mini Me service, **Environment**, **Add Environment Variable**: name `DATA_ENCRYPTION_KEY`, value = paste, **Save, rebuild, and deploy**. You should see a new deploy go to "Live".
+4. In the repo, `notepad .env`, add a line `DATA_ENCRYPTION_KEY=` and paste the same key, save. (Keep it somewhere safe too: a lost key means tag labels cannot be read.)
+5. `python -m app.migrate`: you should see `migrations: {'sender_tags': {'migrated': 0, 'dropped_plaintext_column': False}, ...}` if Render already migrated (or `migrated: N` if yours ran first). Then `python -m scripts.data_controls summary`: **tag labels readable with this key: N of N** and **dedicated DATA_ENCRYPTION_KEY set: yes**.
+6. Tests: `Remove-Item Env:OPENAI_COMPAT_REASONING_EFFORT -ErrorAction SilentlyContinue` then `python -m pytest`. You should see `418 passed`.
+7. Optional: `python -m scripts.data_controls export --out $HOME\mini-me-export.json` (you should see counts and the privacy line). **Do not run `delete`** unless you mean to wipe everything.
+8. The cron-job.org job needs no change.
+
+### 13.7 Phone checks (made-up messages only; Mini Me app on the phone)
+0. Wake and refresh: open the app (or `https://mini-me-bm81.onrender.com/healthz`, you should see `{"ok":true...}`), then close the app fully and reopen it. If the From: row below has no "New group", the deploy has not finished: wait a minute, close and reopen.
+1. WhatsApp "Message yourself": send `Is the club meet on Friday at 5?`, long-press, Copy, open Mini Me, **Paste message**. You should see the draft screen, a **From:** card with the hint "Short labels like \u201cClub senior\u201d work best." and chips **Someone new**, **New group**, **+ Add**.
+2. Tap **New group**: the chip shows a tick and the note "Tagged. I looked again; this draft stays as it is." Tap it again: "Tag cleared."
+3. Tap **+ Add**, type `Club senior`, leave **Group** selected, **Save tag**. You should see a chip `✓ Club senior`.
+4. Do **not** tap Copy. Go back to the app home. Under **Waiting for you** you should see, below a quiet **Not copied** heading, a card with the draft and two buttons **Replied my own way** and **Not replying**. The chip at the top should not count it ("Nothing waiting" or "All caught up").
+5. Tap **Replied my own way**: a screen "You replied your own way" with an optional box. Paste a made-up reply (or leave it empty), tap **Save**. You should see `✓ Saved: you replied your own way · Club senior` with **Undo**. Tap Undo within 10 s: the card comes back. Do it again and wait 10 s (or tap Done).
+6. Make another draft, leave it uncopied, tap **Not replying** on its card: `– Marked not replying`.
+7. Make a third draft and tap **Copy draft**: it appears in the main list as **Copied**, not under Not copied.
+8. Telegram `/events`: for step 5 you should see `draft_acted` (discarded) and `draft_discarded`; with a pasted reply, maybe an `edit_classified` line. `/stats`: **Discarded** goes up by one.
+9. After 8 pm IST with one copied and one not-copied draft waiting, the nudge should say "1 copied draft waiting", not 2.
+10. After 24 h, an untouched Not copied card disappears and `/events` shows `outcome_unknown`.
+(The 30-day tag deletion cannot be waited for; it is tested.)
+
+### 13.8 Choices and flags
+**Build-level:** label encryption with a fallback key plus automatic re-wrap; migration drops the plaintext column; `/tasks/sweep` runs the purge; New group sends `new_group: true` (no saved tag, no label); `replied_own` is one extra confirm action; Export / Delete are functions + CLI; export includes events and logs `data_exported` / `data_deleted` with counts only; classifier reads discards that carry a reply; "Not copied" has no grace period (a draft you are still looking at shows there once you leave the screen).
+**Flags (product-level):**
+1. **Classifier on discards.** It now classifies an unused draft against the user's own reply (a discard with a pasted reply). The score stays a discard. Dev 4 recorded "discards have no edit class"; confirm or tell me to revert.
+2. **5.16 encrypted pseudonym mapping is not built**; this doc's helper is the first encryption in the app. Tag labels are encrypted at rest only (the key sits in Render's env, the database in Neon).
+3. **What "Delete everything" covers.** As built it also deletes the self-model (voice / decision / fact items), which is hard to recreate. Say if it should keep it.
+4. **"Known" survives a tag purge** through the pseudonym kept in old message records (not reversible, but the same label re-typed becomes known again).
+5. Export contains decrypted labels (the user's own export).
