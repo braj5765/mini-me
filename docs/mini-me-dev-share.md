@@ -235,7 +235,7 @@ Source: decisions 5.20, 5.21, 5.22, 5.23, 5.13, 5.15, 5.17, 5.18; design `mini-m
 |---|---|
 | (a) Does WhatsApp offer Share / Mini Me for message text? | **No.** No Share item and no "Select text" for text. B stays "Copy, then Mini Me". |
 | (b) Can an HTTP Shortcuts Quick Settings tile read the clipboard? | **Yes** (Braj, 14 Nov): tile tap gives the "Draft copied" notification. **B's trigger is the Quick Settings tile** (enable "Allow triggering via Quick Settings Tile" in the shortcut's Trigger & Execution Settings, then add the tile in the Quick Settings panel). Home-screen icon stays as fallback. |
-| (d) "Back to WhatsApp" (design §8 note 6) | First build (`window.close`): did not switch apps. Fixed (14 Nov, `2ffb594`): the button opens WhatsApp through an `intent://…package=com.whatsapp` link, with a recent-apps hint if the phone refuses. **Works on Braj's phone** (opens WhatsApp's chat list, not the specific chat). |
+| (d) "Back to WhatsApp" (design §8 note 6) | First build (`window.close`): did not switch apps. Fixed (14 Nov, `2ffb594`): the button opens WhatsApp through an `intent://…package=com.whatsapp` link, with a recent-apps hint if the phone refuses. **Works on Braj's phone** (returns to WhatsApp; WhatsApp may show a harmless "Couldn't open this chat link" toast). Tried a launcher intent (`3a79981`) to avoid the toast: it opened the Play Store page on his phone, so reverted (`2005b2c`). |
 | (c) Can an installed web app read the clipboard on a button tap? | **Yes.** C's entry screen is **Paste message**. A manual textarea is built as fallback. |
 
 ### 12.2 What is built
