@@ -229,7 +229,7 @@ async def tag_item(message_id: str, request: Request, _u: str = Depends(web_user
         return await asyncio.to_thread(
             tags.apply_tag, engine, writer, settings, message_id, tag_id=body.get("tag_id"),
             label=body.get("label"), kind=body.get("kind"), someone_new=bool(body.get("someone_new")),
-            clear=bool(body.get("clear")))
+            new_group=bool(body.get("new_group")), clear=bool(body.get("clear")))
     except ShareError as e:
         _fail(e)
 

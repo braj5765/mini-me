@@ -1,17 +1,23 @@
 """Sender tags for the "From:" row (decisions 5.17 pt 1, 5.18 pt 2, 5.21 pt 1).
 
-A tag is a short label the user types ("Cultural committee", a group or a person). The label is the user's own text,
-kept in its own table (masked for phone numbers and emails). Messages and events never carry it: they get the tag's
-pseudonym, so the same tag is the same contact every time and can become "known" (the user has replied at least
-once, 5.13 pt 6). A tag remembers its domain (default `club`).
+A tag is a short label the user types ("Cultural committee", a group or a person). A label can name a real person or
+group, so it is personal data about other people (decisions 5.24 pt 1): masked for phone numbers and emails, then stored
+ENCRYPTED in its own table (app/privacy/crypto.py), never sent to a model, never put in an event or a log. Messages and
+events never carry it: they get the tag's pseudonym, so the same tag is the same contact every time and can become
+"known" (the user has replied at least once, 5.13 pt 6). A tag remembers its domain (default `club`).
 
-"Someone new" is `new_individual` with the item's own unique pseudonym (it can never become known).
-Clearing a tag goes back to `unknown`.
+"Someone new" is `new_individual` and "New group" is `new_group` (5.24 pt 2), each with the item's own unique pseudonym
+(it can never become known). Both count as new. Clearing a tag goes back to `unknown`.
+
+A tag is kept while it is in use (`last_used_at` moves forward each time it is applied), so known contacts stay
+known. One unused for SENDER_TAG_RETENTION_DAYS (30) is deleted by `purge_unused_tags`, which /tasks/sweep calls.
 """
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from datetime import timedelta
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
@@ -19,6 +25,7 @@ from sqlalchemy.engine import Engine
 from app import db
 from app.config import Settings
 from app.events import EventWriter
+from app.privacy.crypto import UNREADABLE, decrypt_text, encrypt_text
 from app.privacy.masking import mask_text, pseudonymise
 from app.share import service
 from app.share.service import ShareError
@@ -28,13 +35,19 @@ MAX_LABEL = 40
 KINDS = ("individual", "group")
 
 
-def list_tags(engine: Engine, user_id: str = "braj", limit: int = 8) -> list[dict]:
+def label_of(row: dict, settings: Settings | None = None) -> str:
+    """The readable label of a sender_tags row (decrypted), or a placeholder if the key no longer fits."""
+    return decrypt_text(row.get("label_enc"), settings) or UNREADABLE
+
+
+def list_tags(engine: Engine, user_id: str = "braj", limit: int = 8, settings: Settings | None = None) -> list[dict]:
     t = db.sender_tags
     with engine.connect() as conn:
         rows = conn.execute(select(t).where(t.c.user_id == user_id)
                             .order_by(t.c.last_used_at.desc().nullslast(), t.c.created_at.desc()).limit(limit)
                             ).mappings().all()
-    return [{"tag_id": r["tag_id"], "label": r["label"], "kind": r["kind"], "domain": r["domain"]} for r in rows]
+    return [{"tag_id": r["tag_id"], "label": label_of(dict(r), settings), "kind": r["kind"], "domain": r["domain"]}
+            for r in rows]
 
 
 def _clean_label(label: str) -> str:
@@ -52,7 +65,7 @@ def _create(engine: Engine, settings: Settings, label: str, kind: str, user_id: 
     now = datetime.now(timezone.utc)
     t = db.sender_tags
     ins = (pg_insert if engine.dialect.name == "postgresql" else sqlite_insert)(t).values(
-        tag_id="st_" + uuid.uuid4().hex[:10], user_id=user_id, label=label, kind=kind,
+        tag_id="st_" + uuid.uuid4().hex[:10], user_id=user_id, label_enc=encrypt_text(label, settings), kind=kind,
         domain=settings.share_default_domain, pseudonym=pseud, created_at=now, last_used_at=now
     ).on_conflict_do_nothing(index_elements=["pseudonym"])
     with engine.begin() as conn:
@@ -63,7 +76,7 @@ def _create(engine: Engine, settings: Settings, label: str, kind: str, user_id: 
 
 def apply_tag(engine: Engine, writer: EventWriter, settings: Settings, message_id: str, *,
               tag_id: str | None = None, label: str | None = None, kind: str | None = None,
-              someone_new: bool = False, clear: bool = False, user_id: str = "braj") -> dict:
+              someone_new: bool = False, new_group: bool = False, clear: bool = False, user_id: str = "braj") -> dict:
     """Tag the sender of an open shared item and run the autonomy decision again (both decisions stay logged)."""
     rec = writer.get_message(message_id)
     if not rec or rec.get("channel") not in service.SHARE_CHANNELS:
@@ -74,6 +87,8 @@ def apply_tag(engine: Engine, writer: EventWriter, settings: Settings, message_i
         contact_type, pseud, domain = "unknown", own_pseud, settings.share_default_domain
     elif someone_new:
         contact_type, pseud, domain = "new_individual", own_pseud, settings.share_default_domain
+    elif new_group:                                                   # 5.24 pt 2: a separate choice, also new
+        contact_type, pseud, domain = "new_group", own_pseud, settings.share_default_domain
     else:
         if tag_id:
             t = db.sender_tags
@@ -96,5 +111,24 @@ def apply_tag(engine: Engine, writer: EventWriter, settings: Settings, message_i
             conn.execute(db.item_tags.insert().values(message_id=message_id, tag_id=chosen["tag_id"], tagged_at=now))
             conn.execute(db.sender_tags.update().where(db.sender_tags.c.tag_id == chosen["tag_id"])
                          .values(last_used_at=now))
-    result["tag"] = {"tag_id": chosen["tag_id"], "label": chosen["label"], "kind": chosen["kind"]} if chosen else None
+    result["tag"] = ({"tag_id": chosen["tag_id"], "label": label_of(chosen, settings), "kind": chosen["kind"]}
+                     if chosen else None)
     return result
+
+
+def purge_unused_tags(engine: Engine, settings: Settings, *, now: datetime | None = None) -> int:
+    """Delete tags unused for `sender_tag_retention_days` (5.24 pt 1) and the item links that point at them.
+    "Unused" = last applied (or created, if never applied) longer ago than the limit. Returns how many were deleted.
+    Called by /tasks/sweep, so it needs no schedule of its own. The pseudonym left in older message records is a
+    keyed hash and cannot give the label back."""
+    t_now = now or datetime.now(timezone.utc)
+    cutoff = t_now - timedelta(days=settings.sender_tag_retention_days)
+    t = db.sender_tags
+    last_seen = func.coalesce(t.c.last_used_at, t.c.created_at)
+    with engine.begin() as conn:
+        old = [r[0] for r in conn.execute(select(t.c.tag_id).where(last_seen < cutoff)).all()]
+        if not old:
+            return 0
+        conn.execute(delete(db.item_tags).where(db.item_tags.c.tag_id.in_(old)))
+        conn.execute(delete(t).where(t.c.tag_id.in_(old)))
+    return len(old)

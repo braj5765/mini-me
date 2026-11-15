@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.config import get_settings
 from app.share.nudge import maybe_send_nudge
+from app.share.tags import purge_unused_tags
 from app.telegram.bot import BotDeps, sweep_expired
 from app.telegram.router import get_bot_deps
 
@@ -36,4 +37,10 @@ def sweep(deps: BotDeps = Depends(get_bot_deps)) -> dict:
             out["nudge_sent"] = True
     except Exception:  # noqa: BLE001
         log.exception("nudge failed")
+    try:   # sender tags unused for 30 days are deleted (5.24 pt 1); also never blocks the sweep
+        n = purge_unused_tags(deps.engine, deps.settings, now=deps.now())
+        if n:
+            out["tags_deleted"] = n
+    except Exception:  # noqa: BLE001
+        log.exception("tag purge failed")
     return out
