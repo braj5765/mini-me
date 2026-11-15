@@ -3,9 +3,11 @@ drafts, for the shortcut (B) and the web app (C) alike.
 
 Lists open items only (inside their 24 h window):
   - copied drafts: shown, with at least one `draft_copied` event;
-  - held drafts: a web-share blind sample waiting for the user's reply (no draft text, no confidence, no why).
-Drafts that were never copied are not listed (nothing was done with them); they close as outcome unknown when the
-window ends, as does everything unconfirmed. Soonest to expire first.
+  - held drafts: a web-share blind sample waiting for the user's reply (no draft text, no confidence, no why);
+  - not copied (5.24 pt 3): a web-app draft that was shown but never copied. Listed quietly under its own heading so an
+    unused draft counts against the north star (as a discard) instead of dropping out. Shortcut drafts are always
+    copied, so they never land here. Untouched items close as outcome unknown when the window ends, as does everything
+    unconfirmed. Soonest to expire first.
 
 Test mode (5.23 pt 3): the incoming text is not kept, so every card says "message not kept in test mode".
 """
@@ -19,6 +21,7 @@ from sqlalchemy.engine import Engine
 from app import db
 from app.config import Settings
 from app.events.queries import events_for_message
+from app.privacy.crypto import UNREADABLE, decrypt_text
 from app.share.service import SHARE_CHANNELS, _chat_id
 from app.telegram.format import NOT_KEPT
 from app.telegram.store import ThreadStore, aware
@@ -40,9 +43,9 @@ def _tag_labels(engine: Engine, message_ids: list[str]) -> dict[str, dict]:
         return {}
     it, st = db.item_tags, db.sender_tags
     with engine.connect() as conn:
-        rows = conn.execute(select(it.c.message_id, st.c.label, st.c.kind)
+        rows = conn.execute(select(it.c.message_id, st.c.label_enc, st.c.kind)
                             .join(st, st.c.tag_id == it.c.tag_id).where(it.c.message_id.in_(message_ids))).all()
-    return {r[0]: {"label": r[1], "kind": r[2]} for r in rows}
+    return {r[0]: {"label": decrypt_text(r[1]) or UNREADABLE, "kind": r[2]} for r in rows}
 
 
 def _clock(ts, settings) -> str | None:
@@ -60,7 +63,7 @@ def list_pending(engine: Engine, settings: Settings, *,
     m = db.message_records
     ids = [t["message_id"] for t in threads if t["message_id"].startswith("sh-")]
     if not ids:
-        return {"items": [], "copied": 0, "held": 0, "test_mode": settings.test_mode}
+        return {"items": [], "copied": 0, "held": 0, "not_copied": 0, "test_mode": settings.test_mode}
     with engine.connect() as conn:
         recs = {r["message_id"]: dict(r) for r in conn.execute(
             select(m).where(and_(m.c.message_id.in_(ids), m.c.channel.in_(SHARE_CHANNELS)))).mappings().all()}
@@ -72,11 +75,13 @@ def list_pending(engine: Engine, settings: Settings, *,
             continue
         held = t["state"] == "blind_held"
         copies = [e for e in events_for_message(engine, t["message_id"]) if e["event_name"] == "draft_copied"]
-        if not held and not (rec.get("draft_text") and copies):
+        has_draft = bool(rec.get("draft_text"))
+        not_copied = (not held) and has_draft and not copies and rec.get("channel") == "web_share"
+        if not held and not not_copied and not (has_draft and copies):
             continue
         tag = tags.get(t["message_id"])
         card = {
-            "message_id": t["message_id"], "kind": "held" if held else "copied",
+            "message_id": t["message_id"], "kind": "held" if held else "not_copied" if not_copied else "copied",
             "group": tag["label"] if tag else None, "channel": rec.get("channel"),
             "incoming": rec.get("incoming_text") or None,           # None in test mode
             "incoming_note": None if rec.get("incoming_text") else NOT_KEPT,
@@ -85,9 +90,10 @@ def list_pending(engine: Engine, settings: Settings, *,
             "deadline_at": aware(t["deadline_at"]).isoformat(),
             "clock": _clock(copies[-1]["occurred_at"] if copies else t.get("created_at"), settings),
         }
-        if not held:   # a held draft never shows its text, confidence or why
+        if not held:   # a held draft never shows its text, confidence or why (a not-copied one shows it, masked)
             card.update(draft=rec["draft_text"], draft_masked=True)
         items.append(card)
     items.sort(key=lambda c: c["deadline_at"])
     return {"items": items, "copied": sum(1 for i in items if i["kind"] == "copied"),
-            "held": sum(1 for i in items if i["kind"] == "held"), "test_mode": settings.test_mode}
+            "held": sum(1 for i in items if i["kind"] == "held"),
+            "not_copied": sum(1 for i in items if i["kind"] == "not_copied"), "test_mode": settings.test_mode}

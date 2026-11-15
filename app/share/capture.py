@@ -1,5 +1,5 @@
 """Confirming what happened to a shared draft, from the web app's waiting list (Dev 7, decisions 5.20 pt 3, 5.13 pt 2,
-5.15 pt 3, 5.17 pt 4, 5.21 pt 3).
+5.15 pt 3, 5.17 pt 4, 5.21 pt 3, 5.24 pt 3).
 
 Same rules and the same events as the Telegram capture, so scoring and the classifier do not care where a
 confirmation came from:
@@ -8,6 +8,9 @@ confirmation came from:
 - The user's own words are masked before storage. Unconfirmed after the window = outcome unknown (the sweep).
 - "Sent as is" is self-reported (design F6); an edit pasted back that equals the draft is logged as sent as is (C-8).
 - Held (blind) draft: the user's reply comes first; the draft is released only after, by an explicit tap.
+- "Replied my own way" (5.24 pt 3, for drafts shown but never copied): logged as a DISCARD (the user replied but did
+  not use the draft). An optional pasted reply is saved masked and handed to the classifier so it can still learn; it
+  scores as a discard either way.
 """
 import logging
 from datetime import datetime, timezone
@@ -17,6 +20,7 @@ from sqlalchemy.engine import Engine
 
 from app.config import Settings
 from app.events import EventName, EventWriter
+from app.events.queries import events_for_message
 from app.events.writer import make_key
 from app.privacy.masking import mask_text
 from app.share import cache
@@ -66,20 +70,21 @@ def _claim(engine: Engine, message_id: str) -> None:
 def confirm(engine: Engine, writer: EventWriter, settings: Settings, message_id: str, action: str,
             text: str | None = None, *, hook: Hook | None = None,
             now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> dict:
-    """action: sent_as_is | edited (text = what was sent) | not_replying. For a copied (shown) draft or, for
-    not_replying only, a held one."""
+    """action: sent_as_is | edited (text = what was sent) | replied_own (text = optional own reply) | not_replying.
+    For a copied or not-copied (shown) draft or, for not_replying only, a held one."""
     rec, thread = _open_item(engine, writer, message_id)
     state = thread["state"]
-    if action not in ("sent_as_is", "edited", "not_replying"):
+    if action not in ("sent_as_is", "edited", "replied_own", "not_replying"):
         raise ShareError(422, "Unknown action.")
     if state not in ("shown", "blind_held"):
         raise ShareError(409, "That one is already recorded.")
     if state == "blind_held" and action != "not_replying":
         raise ShareError(409, "That draft is held until you have replied. Share your reply first.")
-    if action in ("sent_as_is", "edited") and not rec.get("draft_text"):
+    if action in ("sent_as_is", "edited", "replied_own") and not rec.get("draft_text"):
         raise ShareError(409, "That item has no draft to confirm.")
     if action == "edited" and not (text or "").strip():
         raise ShareError(422, "Paste what you sent.")
+    copied_before = any(e["event_name"] == "draft_copied" for e in events_for_message(engine, message_id))
     _claim(engine, message_id)
 
     common, tta = _common(rec), _tta(thread, now())
@@ -92,6 +97,25 @@ def confirm(engine: Engine, writer: EventWriter, settings: Settings, message_id:
         writer.log(EventName.not_replying, message_id=message_id,
                    payload={"capture": "button", "time_to_action_ms": tta, "shown_state": shown_state}, **common)
         return {"ok": True, "outcome": "not_replying"}
+
+    if action == "replied_own":
+        # 5.24 pt 3: the user replied their own way. A discard in every score; the reply (if given) is the user's own
+        # words, masked, and goes to the classifier so it can still learn from the gap between draft and reply.
+        own = mask_text(text.strip()) if (text or "").strip() else None
+        capture = "paste" if own else "button"
+        fields = {"outcome": "discarded", "time_to_action_ms": tta}
+        if own:
+            fields["sent_text"] = own
+        writer.upsert_message(message_id, **fields)
+        writer.log(EventName.draft_acted, message_id=message_id, idempotency_key=make_key("draft_acted", message_id),
+                   payload={"action": "discarded", "capture": capture, "time_to_action_ms": tta,
+                            "shown_state": "shown", "reply_shared": bool(own),
+                            "was_copied": bool(copied_before)}, **common)
+        writer.log(EventName.draft_discarded, message_id=message_id,
+                   payload={"reason": "replied_own_way"}, **common)
+        if own:
+            _run_hook(hook, message_id, capture)
+        return {"ok": True, "outcome": "discarded", "reply_saved": bool(own)}
 
     draft = rec["draft_text"]
     if action == "sent_as_is":

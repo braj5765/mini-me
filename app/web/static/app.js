@@ -174,7 +174,7 @@
   }
 
   function countChip(p, handled) {
-    const open = p.items.filter((i) => !handled.has(i.message_id));
+    const open = p.items.filter((i) => !handled.has(i.message_id) && i.kind !== 'not_copied');   // "Not copied" is quiet: never counted
     if (!p.items.length) return chip('Nothing waiting', '', '○');
     if (!open.length) return chip('All caught up', 'ok', '✓');
     const c = open.filter((i) => i.kind === 'copied').length, hd = open.filter((i) => i.kind === 'held').length;
@@ -190,7 +190,14 @@
         h('p', { class: 'mm-muted' }, 'Nothing is waiting. When you copy a draft, it shows up here so you can tell me what happened.'),
         h('p', { class: 'mm-small' }, 'Drafts you do not confirm within 24 hours are left out of your numbers.')));
     }
-    p.items.forEach((it) => kids.push(handled.has(it.message_id) ? doneRow(it, box, p) : card(it, box, p)));
+    const row = (it) => (handled.has(it.message_id) ? doneRow(it, box, p) : card(it, box, p));
+    p.items.filter((i) => i.kind !== 'not_copied').forEach((it) => kids.push(row(it)));
+    const quiet = p.items.filter((i) => i.kind === 'not_copied');     // 5.24 pt 3: drafts shown but never copied, under a quiet heading
+    if (quiet.length) {
+      kids.push(h('h3', { class: 'mm-quiet' }, 'Not copied'),
+        h('p', { class: 'mm-small' }, 'Drafts you saw but did not copy. Tell me what happened, or leave them.'));
+      quiet.forEach((it) => kids.push(row(it)));
+    }
     if (S.queue.size) kids.push(btn('Done', 'mm-primary', async () => { await flush(); go('home', {}, { replace: true }); }));
     box.replaceChildren(...kids);
   }
@@ -200,7 +207,7 @@
     const incoming = it.incoming ? masked(it.incoming) : h('p', { class: 'mm-small' }, '(' + (it.incoming_note || 'message not kept in test mode') + ')');
     const head = h('div', { class: 'mm-row', style: 'justify-content:space-between' },
       h('strong', null, it.group || 'Shared message'),
-      h('span', { class: 'mm-small' }, (it.kind === 'held' ? 'Shared ' : 'Copied ') + it.when + (it.clock ? ' · ' + it.clock : '')));
+      h('span', { class: 'mm-small' }, (it.kind === 'copied' ? 'Copied ' : it.kind === 'not_copied' ? 'Shown ' : 'Shared ') + it.when + (it.clock ? ' · ' + it.clock : '')));
     if (it.kind === 'held') {
       return h('section', { class: 'mm-card' }, head, h('p', { class: 'mm-small' }, 'Held draft, waiting for your reply'), incoming,
         h('div', { class: 'mm-hold' }, chip('Draft held', 'twin', '◔'),
@@ -208,6 +215,14 @@
         h('p', { class: 'mm-small' }, 'Confirm within ' + it.confirm_within_hours + ' h'),
         btn('Paste my reply', 'mm-outline', () => replyToHeld(it.message_id, 'paste')),
         link('Not replying', () => decide('not_replying')));
+    }
+    if (it.kind === 'not_copied') {
+      return h('section', { class: 'mm-card' }, head, incoming,
+        h('div', { class: 'mm-card mm-twin', style: 'margin:10px 0' }, h('span', { class: 'mm-label' }, 'Your twin wrote this'), h('p', { style: 'margin:0;white-space:pre-wrap' }, it.draft)),
+        h('p', { class: 'mm-small' }, 'Confirm within ' + it.confirm_within_hours + ' h'),
+        h('div', { class: 'mm-outcomes' },
+          btn('Replied my own way', 'mm-outline', () => go('pasteOwn', { item: it })),
+          btn('Not replying', 'mm-outline', () => decide('not_replying'))));
     }
     return h('section', { class: 'mm-card' }, head, incoming,
       h('div', { class: 'mm-card mm-twin', style: 'margin:10px 0' }, h('span', { class: 'mm-label' }, 'Your twin wrote this'), h('p', { style: 'margin:0;white-space:pre-wrap' }, it.draft)),
@@ -220,7 +235,8 @@
 
   function doneRow(it, box, p) {
     const q = S.queue.get(it.message_id);
-    const msg = q.action === 'sent_as_is' ? '✓ Logged as sent as is' : q.action === 'edited' ? '✓ Saved your version' : '– Marked not replying';
+    const msg = q.action === 'sent_as_is' ? '✓ Logged as sent as is' : q.action === 'edited' ? '✓ Saved your version'
+      : q.action === 'replied_own' ? '✓ Saved: you replied your own way' : '– Marked not replying';
     return h('div', { class: 'mm-done' }, h('span', null, msg, it.group ? ' · ' + it.group : ''),
       link('Undo', () => { S.queue.delete(it.message_id); schedule(); renderList(box, p); }));
   }
@@ -255,6 +271,24 @@
       h('p', { class: 'mm-muted' }, 'In WhatsApp, long-press your message, tap Copy, then paste it here.'),
       h('div', { class: 'mm-card mm-twin' }, h('span', { class: 'mm-label' }, 'My draft was'), h('p', { style: 'margin:0;white-space:pre-wrap' }, it.draft)),
       h('label', { class: 'mm-label', for: 'sent' }, 'What you sent'), ta, h('div', { style: 'height:8px' }), fillBtn,
+      h('p', { class: 'mm-small' }, 'Personal details are hidden before saving.')],
+      bar: [save, link('Cancel', () => history.back())] }));
+  };
+
+  // ---- "Replied my own way": optional paste of the reply (5.24 pt 3). It counts as a discard either way.
+  SCREENS.pasteOwn = (d) => {
+    const it = d.item;
+    const ta = h('textarea', { id: 'own', 'aria-label': 'Your reply (optional)' });
+    const save = btn('Save', 'mm-primary', () => {
+      S.queue.set(it.message_id, { message_id: it.message_id, action: 'replied_own', text: ta.value.trim() || null, kind: it.kind, group: it.group });
+      schedule(); history.back();
+    });
+    const fillBtn = btn('Paste from clipboard', 'mm-outline', async () => { try { ta.value = await navigator.clipboard.readText(); } catch (e) { toast('Press and hold in the box, then tap Paste.'); } });
+    show(frame({ where: false, body: [
+      link('‹ Waiting for you', () => history.back()), h('h2', null, 'You replied your own way'),
+      h('p', { class: 'mm-muted' }, 'Pasting your reply is optional. If you do, I can learn from how it differs from my draft. It counts the same either way.'),
+      h('div', { class: 'mm-card mm-twin' }, h('span', { class: 'mm-label' }, 'My draft was'), h('p', { style: 'margin:0;white-space:pre-wrap' }, it.draft)),
+      h('label', { class: 'mm-label', for: 'own' }, 'What you sent (optional)'), ta, h('div', { style: 'height:8px' }), fillBtn,
       h('p', { class: 'mm-small' }, 'Personal details are hidden before saving.')],
       bar: [save, link('Cancel', () => history.back())] }));
   };
@@ -333,7 +367,7 @@
 
   // ------------------------------------------------------------------ From: row (tag -> server-side re-run, 5.21 pt 1)
   async function fromRow(item, onTagged) {
-    const wrap = h('div', { class: 'mm-card' }, h('span', { class: 'mm-label' }, 'From:'), h('p', { class: 'mm-small' }, 'Optional. Helps me tell known from new.'));
+    const wrap = h('div', { class: 'mm-card' }, h('span', { class: 'mm-label' }, 'From:'), h('p', { class: 'mm-small' }, 'Optional. Helps me tell known from new. Short labels like \u201cClub senior\u201d work best.'));
     const row = h('div', { class: 'mm-scroll' });
     const note = h('p', { class: 'mm-small', role: 'status' }, S.tagNote);
     wrap.append(row, note);
@@ -351,12 +385,13 @@
       onclick: () => (S.selTag === key ? apply({ clear: true }, null) : apply(body, key)) }, (S.selTag === key ? '✓ ' : '') + label);
     tags.forEach((t) => row.append(mk(t.label, t.tag_id, { tag_id: t.tag_id })));
     row.append(mk('Someone new', 'new', { someone_new: true }));
+    row.append(mk('New group', 'newgroup', { new_group: true }));
     row.append(h('button', { type: 'button', class: 'mm-chipbtn', onclick: () => addForm(wrap, apply) }, '+ Add'));
     return wrap;
   }
   function addForm(wrap, apply) {
     if (wrap.querySelector('.mm-add')) return;
-    const name = h('input', { type: 'text', maxlength: '40', 'aria-label': 'Who it is from', placeholder: 'A short label, not a number' });
+    const name = h('input', { type: 'text', maxlength: '40', 'aria-label': 'Who it is from', placeholder: 'A short label, e.g. Club senior' });
     let kind = 'group';
     const g = h('button', { type: 'button', class: 'mm-chipbtn', 'aria-pressed': 'true' }, 'Group'), p = h('button', { type: 'button', class: 'mm-chipbtn', 'aria-pressed': 'false' }, 'Person');
     g.onclick = () => { kind = 'group'; g.setAttribute('aria-pressed', 'true'); p.setAttribute('aria-pressed', 'false'); };

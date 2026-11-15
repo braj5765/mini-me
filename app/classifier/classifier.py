@@ -214,7 +214,11 @@ class EditClassifier:
         if rec.get("edit_class") is not None:
             return "already_classified"
         outcome = rec.get("outcome")
-        if outcome not in _CAPTURED:
+        # Dev 7b (5.24 pt 3): "Replied my own way" with a pasted reply is a DISCARD that still teaches: the unused draft
+        # is read against what the user actually wrote. It stays a discard in every score (stats ignore edit_class on
+        # discards); only a discard that carries a reply is classified.
+        discard_with_reply = outcome == "discarded" and bool((rec.get("sent_text") or "").strip())
+        if outcome not in _CAPTURED and not discard_with_reply:
             if outcome == "waiting" and rec.get("shown_state") == "blind":
                 return "blind_before_reply"
             return f"outcome_{outcome}"           # discarded, unknown, not_replying, user_authored, not_me, waiting

@@ -78,3 +78,6 @@ textarea { min-height: 120px; resize: none; }
 .mm-hold { border: 2px dashed var(--twin); border-radius: 12px; padding: 12px; background: var(--twinTint); margin: 8px 0; }
 .mm-empty { text-align: center; padding: 28px 8px; }
 .mm-add { display: grid; gap: 8px; margin-top: 8px; }
+
+/* "Not copied" (5.24 pt 3): a quiet section, no badge, no colour of its own */
+.mm-quiet { margin: 26px 0 2px; font-size: 1rem; font-weight: 600; color: var(--muted); }
