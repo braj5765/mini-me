@@ -210,6 +210,10 @@ def main(argv=None) -> int:
     text = "\n".join(out)
     if a.out:
         Path(a.out).write_text(text, encoding="utf-8-sig")
+    try:   # Windows consoles default to cp1252, which cannot print the emoji in the made-up messages
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     print(text)
     return 0 if all(ok for _, ok in checks) else 1
 

@@ -584,19 +584,19 @@ def test_app_shell_static_files_and_no_path_escape(web):
 
 def test_the_app_never_stores_shared_text_in_the_browser_and_uses_text_nodes():
     from pathlib import Path
-    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     for banned in ("localStorage", "sessionStorage", "indexedDB", "innerHTML", "document.write", "caches.put"):
         assert banned not in js
-    sw = (Path(__file__).parent.parent / "app" / "web" / "static" / "sw.js").read_text()
+    sw = (Path(__file__).parent.parent / "app" / "web" / "static" / "sw.js").read_text(encoding="utf-8")
     assert "/app/static/" in sw and "req.method !== 'GET'" in sw.replace('"', "'")
-    css = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.css").read_text()
+    css = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.css").read_text(encoding="utf-8")
     for word in ("unlock", "level up", "gate"):
         assert word not in (js + css).lower().replace("navigate", "")
 
 
 def test_copy_never_says_sent_and_wording_rules_hold():
     from pathlib import Path
-    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     for banned in ("unlock", "level up", "overdue", "last chance", "runs out", "don't forget"):
         assert banned not in js.lower()
 
@@ -621,12 +621,12 @@ def test_waiting_list_cards_carry_a_local_copy_time(web):
 
 def test_login_page_logs_one_session_started_and_the_app_does_not_add_a_second():
     from pathlib import Path
-    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     after_login = js.split("res = await fetch('/login'")[1].split("go('home'")[0]
     assert "logSession" not in after_login
 
 
 def test_back_to_whatsapp_opens_the_app_through_an_intent():
     from pathlib import Path
-    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text()
+    js = (Path(__file__).parent.parent / "app" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     assert "package=com.whatsapp" in js and "window.close" not in js
