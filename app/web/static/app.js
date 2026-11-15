@@ -76,7 +76,7 @@
     let left = false;
     const mark = () => { if (document.hidden) left = true; };
     document.addEventListener('visibilitychange', mark, { once: true });
-    try { window.location.href = 'intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.whatsapp;end'; } catch (e) { /* ignore */ }
+    try { window.location.href = 'intent://send/#Intent;scheme=whatsapp;package=com.whatsapp;end'; } catch (e) { /* ignore */ }
     setTimeout(() => { if (!left && !document.hidden) toast('Could not open WhatsApp. Use your recent apps button to switch back.'); }, 900);
   }
   function toast(msg) {
