@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+pysqlite:///./local.db"
     app_secret: str = "change-me-local-only"
     pseudonym_key: str = "change-me-local-only"
+    # Encryption at rest for sender-tag labels (5.24 pt 1). One or more Fernet keys, comma-separated; the first one
+    # encrypts. Empty = a key derived from APP_SECRET is used (works, but set a dedicated key in production).
+    data_encryption_key: str = ""
     login_password_hash: str = ""
     app_env: str = "local"  # local | prod
     app_version: str = "0.1.0"
@@ -77,6 +80,9 @@ class Settings(BaseSettings):
     checkin_time: str = "20:00"             # daily check-in (5.12 pt 2), local time; the Telegram nudge goes out then
     checkin_timezone: str = "Asia/Kolkata"
     nudge_window_hours: float = 3.0         # the nudge is sent only within this long after the check-in time
+
+    # Dev 7b (decisions 5.24). Build-level placeholders.
+    sender_tag_retention_days: float = 30.0  # a tag unused this long is deleted by /tasks/sweep (5.24 pt 1) [adjustable after testing]
 
     @property
     def base_url(self) -> str:

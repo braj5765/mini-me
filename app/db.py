@@ -1,4 +1,5 @@
 """Database tables (SQLAlchemy Core). Same code runs on Postgres (Neon) and SQLite (tests)."""
+import logging
 from functools import lru_cache
 
 from sqlalchemy import (
@@ -127,18 +128,20 @@ api_tokens = Table(
 
 
 # Sender tags for the "From:" row (Dev 7, 5.17 pt 1). A tag is a short label the user typed ("Cultural committee").
-# Stored as the user's own words (masked for phones / emails). Messages never store the label: they get the
-# tag's pseudonym. New tables: create_all adds them; nothing existing changes.
+# The label can name a real person or group, so it is personal data about other people (5.24 pt 1): it is stored
+# ENCRYPTED (`label_enc`, app/privacy/crypto.py), masked for phones / emails before encryption, never sent to a model,
+# and never put in an event or log (events refer to a tag by its id / pseudonym only). Messages never store the label:
+# they get the tag's pseudonym. Dev 7b replaced the plaintext `label` column: app/migrations.py moves old databases.
 sender_tags = Table(
     "sender_tags", metadata,
     Column("tag_id", String(16), primary_key=True),          # st_ + 10 hex
     Column("user_id", String(64), nullable=False),
-    Column("label", String(60), nullable=False),
+    Column("label_enc", Text, nullable=False),               # Fernet token of the label (never plaintext)
     Column("kind", String(12), nullable=False),              # individual | group
     Column("domain", String(64), nullable=False),            # remembered domain (5.18); default club
     Column("pseudonym", String(32), nullable=False, unique=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
-    Column("last_used_at", DateTime(timezone=True)),
+    Column("last_used_at", DateTime(timezone=True)),       # "in use": a tag unused for 30 days is deleted (5.24 pt 1)
 )
 
 # Which tag an item carries (for the waiting list's "group" line). One row per item.
@@ -155,6 +158,18 @@ def get_engine() -> Engine:
     return create_engine(get_settings().sqlalchemy_url, pool_pre_ping=True, future=True)
 
 
-def init_db(engine: Engine | None = None) -> None:
-    """Create tables if missing. Alembic arrives with D1b; until then the schema is create-only."""
-    metadata.create_all(engine or get_engine())
+def init_db(engine: Engine | None = None, *, raise_migration_errors: bool = False) -> dict:
+    """Create tables if missing, then run the small one-off data migrations (app/migrations.py; idempotent).
+    Alembic arrives with D1b; until then the schema is create-only plus those migrations."""
+    eng = engine or get_engine()
+    metadata.create_all(eng)
+    from app import migrations   # imported here: migrations needs the tables defined above
+    try:
+        return migrations.run_all(eng)
+    except Exception:  # noqa: BLE001
+        # A failed migration changes nothing (one transaction). The app still starts; only sender tags would
+        # complain. `python -m app.migrate` raises so the error is visible when run by hand.
+        if raise_migration_errors:
+            raise
+        logging.getLogger("minime.db").exception("data migration failed; nothing was changed")
+        return {"error": True}
