@@ -8,8 +8,10 @@ Export: every table that holds the user's data, as one JSON-able dict: message r
 sender tags (with readable labels), item-tag links, Telegram thread ids and timers, and API-token METADATA (name, prefix,
 dates; never a token or a hash). Logs a `data_exported` event with counts only.
 
-Delete everything: removes the same data (not the API tokens or the login, which are settings, not data). Needs the
-exact confirmation phrase. A single `data_deleted` event with counts only is written afterwards, so the log shows that
+Delete (decision from Braj, 17 Nov): two separate commands, because the self-model is the hardest part to rebuild.
+`delete_activity` removes messages, events, tags and thread records and KEEPS the self-model; `delete_self_model`
+removes only the self-model. `delete_everything` (both) stays as a function for a future button. None of them touch the
+API tokens or the login, which are settings, not data. Each needs its own exact confirmation phrase. A single `data_deleted` event with counts only is written afterwards, so the log shows that
 a wipe happened without keeping anything that was wiped.
 """
 from datetime import datetime, timezone
@@ -26,6 +28,8 @@ from app.privacy.crypto import UNREADABLE, decrypt_text, rewrap
 from app.share import cache
 
 CONFIRM_PHRASE = "delete everything"
+CONFIRM_ACTIVITY = "delete my activity"
+CONFIRM_SELF_MODEL = "delete my self-model"
 
 # table label -> table. Order matters for delete only in that nothing here has foreign keys.
 _DATA_TABLES = {
@@ -75,19 +79,44 @@ def export_my_data(engine: Engine, settings: Settings | None = None, *, log_even
     return out
 
 
-def delete_everything(engine: Engine, confirm: str, settings: Settings | None = None) -> dict[str, int]:
-    """Delete all of the user's data. `confirm` must be the exact phrase. Returns how many rows went from each table."""
-    if (confirm or "").strip().lower() != CONFIRM_PHRASE:
-        raise ValueError(f'To delete everything, confirm with the exact phrase "{CONFIRM_PHRASE}".')
-    deleted = counts(engine)
+_ACTIVITY_TABLES = [k for k in _DATA_TABLES if k != "self_model_items"]
+
+
+def _wipe(engine: Engine, names: list[str], scope: str) -> dict[str, int]:
+    deleted = {n: v for n, v in counts(engine).items() if n in names}
     with engine.begin() as conn:                      # all or nothing
-        for table in _DATA_TABLES.values():
-            conn.execute(delete(table))
+        for n in names:
+            conn.execute(delete(_DATA_TABLES[n]))
     cache.clear()                                     # in-memory restored values (this process only)
     EventWriter(engine).log_safe(EventName.data_deleted,
-                                 idempotency_key=make_key("data_deleted", datetime.now(timezone.utc).isoformat()),
-                                 payload={"deleted": deleted})
+                                 idempotency_key=make_key("data_deleted", scope, datetime.now(timezone.utc).isoformat()),
+                                 payload={"scope": scope, "deleted": deleted})
     return deleted
+
+
+def _check(confirm: str, phrase: str) -> None:
+    if (confirm or "").strip().lower() != phrase:
+        raise ValueError(f'To go ahead, confirm with the exact phrase "{phrase}".')
+
+
+def delete_activity(engine: Engine, confirm: str, settings: Settings | None = None) -> dict[str, int]:
+    """Delete messages, events, sender tags, tag links and Telegram thread records. KEEPS the self-model, the API
+    tokens and the login. `confirm` must be "delete my activity"."""
+    _check(confirm, CONFIRM_ACTIVITY)
+    return _wipe(engine, _ACTIVITY_TABLES, "activity")
+
+
+def delete_self_model(engine: Engine, confirm: str, settings: Settings | None = None) -> dict[str, int]:
+    """Delete only the self-model items (voice, decision and fact items). `confirm` must be "delete my self-model"."""
+    _check(confirm, CONFIRM_SELF_MODEL)
+    return _wipe(engine, ["self_model_items"], "self_model")
+
+
+def delete_everything(engine: Engine, confirm: str, settings: Settings | None = None) -> dict[str, int]:
+    """Both of the above in one step (what a future 'Delete everything' button would call). `confirm` must be
+    "delete everything". Not exposed on the command line: use the two commands there."""
+    _check(confirm, CONFIRM_PHRASE)
+    return _wipe(engine, list(_DATA_TABLES), "everything")
 
 
 def rewrap_tags(engine: Engine, settings: Settings | None = None) -> dict[str, int]:

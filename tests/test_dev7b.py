@@ -287,6 +287,7 @@ def test_delete_everything_removes_tags_and_all_user_data_but_keeps_tokens_and_l
         assert rows(web.engine, t) == []
     left = events(web.engine)
     assert [e["event_name"] for e in left] == ["data_deleted"] and left[0]["payload"]["deleted"]["sender_tags"] == 1
+    assert left[0]["payload"]["scope"] == "everything"
     assert len(rows(web.engine, db.api_tokens)) == 1                          # settings, not data
     assert web.client.get("/app/api/tags").json()["tags"] == []
 
@@ -301,9 +302,52 @@ def test_cli_summary_export_delete_and_rewrap(web, tmp_path, capsys):
     assert cli.main(["export", "--out", str(f)]) == 0
     assert json.loads(f.read_text(encoding="utf-8"))["sender_tags"][0]["label"] == LABEL
     assert cli.main(["rewrap-tags"]) == 0 and "rewrapped" in capsys.readouterr().out
-    assert cli.main(["delete", "--confirm", "nope"]) == 2 and len(rows(web.engine, db.sender_tags)) == 1
-    assert cli.main(["delete", "--confirm", "delete everything"]) == 0
-    assert rows(web.engine, db.sender_tags) == []
+    seed_self_model(web)
+    assert cli.main(["delete-activity", "--confirm", "nope"]) == 2 and len(rows(web.engine, db.sender_tags)) == 1
+    assert cli.main(["delete-activity", "--confirm", "delete everything"]) == 2     # the old phrase is not accepted here
+    assert cli.main(["delete-activity", "--confirm", "delete my activity"]) == 0
+    assert rows(web.engine, db.sender_tags) == [] and len(rows(web.engine, db.self_model_items)) == 1
+    assert cli.main(["delete-self-model", "--confirm", "delete my activity"]) == 2
+    assert cli.main(["delete-self-model", "--confirm", "delete my self-model"]) == 0
+    assert rows(web.engine, db.self_model_items) == []
+
+
+def seed_self_model(web):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    with web.engine.begin() as c:
+        c.execute(db.self_model_items.insert().values(
+            item_id="sm_test000001", user_id="u", layer="voice", text="short and casual", source="manual",
+            status="active", version=1, created_at=now, updated_at=now))
+
+
+def test_delete_activity_keeps_self_model_and_tokens_and_logs_scope(web):
+    mid, _ = tagged(web)
+    copy(web, mid)
+    seed_self_model(web)
+    with pytest.raises(ValueError):
+        data_controls.delete_activity(web.engine, "delete everything")
+    out = data_controls.delete_activity(web.engine, "Delete My Activity")
+    assert out["sender_tags"] == 1 and out["message_records"] == 1 and "self_model_items" not in out
+    assert len(rows(web.engine, db.self_model_items)) == 1 and len(rows(web.engine, db.api_tokens)) == 1
+    left = events(web.engine)
+    assert [e["event_name"] for e in left] == ["data_deleted"] and left[0]["payload"]["scope"] == "activity"
+
+
+def test_delete_self_model_touches_only_the_self_model(web):
+    mid, _ = tagged(web)
+    seed_self_model(web)
+    with pytest.raises(ValueError):
+        data_controls.delete_self_model(web.engine, "delete my activity")
+    out = data_controls.delete_self_model(web.engine, "delete my self-model")
+    assert out == {"self_model_items": 1} and rows(web.engine, db.self_model_items) == []
+    assert len(rows(web.engine, db.sender_tags)) == 1 and len(rows(web.engine, db.message_records)) == 1
+    assert [e["payload"]["scope"] for e in events(web.engine, "data_deleted")] == ["self_model"]
+
+
+def test_reasoning_effort_variable_is_cleared_for_tests():
+    import os
+    assert "OPENAI_COMPAT_REASONING_EFFORT" not in os.environ
 
 
 # ======================================================================================= New group (5.24 pt 2)

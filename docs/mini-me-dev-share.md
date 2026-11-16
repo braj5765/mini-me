@@ -291,7 +291,10 @@ Source: decisions 5.24 (pts 1 to 3), 5.13 pts 2 and 6, 5.14 pt 7, 5.16, 5.17 pt 
 ### 13.3 Export / Delete (CLI, laptop PowerShell, repo folder, env active, `.env` has `DATABASE_URL` and the same `DATA_ENCRYPTION_KEY` as Render)
 - `python -m scripts.data_controls summary`: row counts per table, how many tag labels are readable with this key, whether a dedicated key is set.
 - `python -m scripts.data_controls export --out my-data.json`: message records, events, self-model items, sender tags (labels readable), item-tag links, Telegram thread ids / timers, API-token metadata (never a token or hash). Logs `data_exported` (counts only).
-- `python -m scripts.data_controls delete --confirm "delete everything"`: removes all of those tables (**including the self-model**; not API tokens or the login). Logs `data_deleted` (counts only). Flag 13.8-3.
+- **Two delete commands (Braj's decision, 17 Nov; the self-model is the hardest part to rebuild):**
+  - `python -m scripts.data_controls delete-activity --confirm "delete my activity"`: removes messages, events, sender tags, tag links and Telegram thread records. **Keeps the self-model**, API tokens and the login.
+  - `python -m scripts.data_controls delete-self-model --confirm "delete my self-model"`: removes only the self-model items.
+  - Each logs one `data_deleted` event with counts and a `scope` (`activity` / `self_model`), never content. The old `delete` command and the phrase "delete everything" are gone from the CLI. `delete_everything()` (both) remains as a function for a future Settings button.
 - `python -m scripts.data_controls rewrap-tags`.
 
 ### 13.4 "Not copied": events and scoring
@@ -301,7 +304,7 @@ Source: decisions 5.24 (pts 1 to 3), 5.13 pts 2 and 6, 5.14 pt 7, 5.16, 5.17 pt 
 - The nudge counts copied drafts only (tested: 1 copied + 2 not copied gives "1 copied draft waiting"; only-not-copied sends nothing).
 
 ### 13.5 Tests
-44 new in `tests/test_dev7b.py` (crypto, label encrypted and only readable through the app, label absent from every other table / events / logs / model requests, wrong key shows "(unreadable)", migration encrypt / idempotent / failure keeps plaintext / rerun finishes, re-wrap on key set, 30-day purge rules and the sweep, export / delete / CLI, New group, Not copied listing and actions, classifier on a discard with a reply, nudge). One Dev 7 test updated (it asserted never-copied drafts are not listed; 5.24 replaces that). **Total 418 passing** (374 before), run with `OPENAI_COMPAT_REASONING_EFFORT` unset; `tests/conftest.py` untouched. Also checked the page script in a jsdom run (list, own-way screen, queue, From row, New group call). Not run: the suite on Postgres, a real browser on the phone.
+44 new in `tests/test_dev7b.py` (crypto, label encrypted and only readable through the app, label absent from every other table / events / logs / model requests, wrong key shows "(unreadable)", migration encrypt / idempotent / failure keeps plaintext / rerun finishes, re-wrap on key set, 30-day purge rules and the sweep, export / delete / CLI, New group, Not copied listing and actions, classifier on a discard with a reply, nudge). One Dev 7 test updated (it asserted never-copied drafts are not listed; 5.24 replaces that). **Total 421 passing** (374 before; 418 at first, +3 on 17 Nov for the two delete commands and the environment reset). `tests/conftest.py` now clears `OPENAI_COMPAT_REASONING_EFFORT` for every test (Braj's OK, 17 Nov), so the extra PowerShell line is no longer needed. Also checked the page script in a jsdom run (list, own-way screen, queue, From row, New group call). Not run: the suite on Postgres, a real browser on the phone.
 
 ### 13.6 Braj: set the key, deploy check (PowerShell, repo folder)
 1. `git pull origin main` should end with a fast-forward to the Dev 7b commits (`7be1a4f` to `39d2335`, then the docs commit). Then `pip install -e .` (adds `cryptography`).
@@ -309,8 +312,8 @@ Source: decisions 5.24 (pts 1 to 3), 5.13 pts 2 and 6, 5.14 pt 7, 5.16, 5.17 pt 
 3. Render dashboard, your Mini Me service, **Environment**, **Add Environment Variable**: name `DATA_ENCRYPTION_KEY`, value = paste, **Save, rebuild, and deploy**. You should see a new deploy go to "Live".
 4. In the repo, `notepad .env`, add a line `DATA_ENCRYPTION_KEY=` and paste the same key, save. (Keep it somewhere safe too: a lost key means tag labels cannot be read.)
 5. `python -m app.migrate`: you should see `migrations: {'sender_tags': {'migrated': 0, 'dropped_plaintext_column': False}, ...}` if Render already migrated (or `migrated: N` if yours ran first). Then `python -m scripts.data_controls summary`: **tag labels readable with this key: N of N** and **dedicated DATA_ENCRYPTION_KEY set: yes**.
-6. Tests: `Remove-Item Env:OPENAI_COMPAT_REASONING_EFFORT -ErrorAction SilentlyContinue` then `python -m pytest`. You should see `418 passed`.
-7. Optional: `python -m scripts.data_controls export --out $HOME\mini-me-export.json` (you should see counts and the privacy line). **Do not run `delete`** unless you mean to wipe everything.
+6. Tests: `python -m pytest`. You should see `421 passed` (no need to clear `OPENAI_COMPAT_REASONING_EFFORT` any more).
+7. Optional: `python -m scripts.data_controls export --out $HOME\mini-me-export.json` (you should see counts and the privacy line). **Do not run `delete-activity` or `delete-self-model`** unless you mean to wipe that data.
 8. The cron-job.org job needs no change.
 
 ### 13.7 Phone checks (made-up messages only; Mini Me app on the phone)
@@ -328,10 +331,11 @@ Source: decisions 5.24 (pts 1 to 3), 5.13 pts 2 and 6, 5.14 pt 7, 5.16, 5.17 pt 
 (The 30-day tag deletion cannot be waited for; it is tested.)
 
 ### 13.8 Choices and flags
+**Phone-verified (15 to 16 Nov, Braj):** New group and label hint, Not copied list, Replied my own way (#71: `draft_acted` discarded, `draft_discarded`, `edit_classified`; Discarded 9 to 10), Not replying, copied draft stays in the main list, Undo, 24 h `outcome_unknown` for a not-copied draft (#73) and a copied one (#72), `nudge_sent` logged at 20:01 on 16 Nov. The nudge text ("1 copied draft waiting") was not seen in a screenshot yet.
 **Build-level:** label encryption with a fallback key plus automatic re-wrap; migration drops the plaintext column; `/tasks/sweep` runs the purge; New group sends `new_group: true` (no saved tag, no label); `replied_own` is one extra confirm action; Export / Delete are functions + CLI; export includes events and logs `data_exported` / `data_deleted` with counts only; classifier reads discards that carry a reply; "Not copied" has no grace period (a draft you are still looking at shows there once you leave the screen).
 **Flags (product-level):**
-1. **Classifier on discards.** It now classifies an unused draft against the user's own reply (a discard with a pasted reply). The score stays a discard. Dev 4 recorded "discards have no edit class"; confirm or tell me to revert.
+1. **Classifier on discards: DECIDED, keep (Braj, 17 Nov).** It classifies an unused draft against the user's own reply (a discard with a pasted reply); the score stays a discard. Hub: treat these labels as a different kind of signal from edits of a sent draft, and update Dev 4's "discards have no edit class". Seen live: #71 got `edit_classified class=decision`.
 2. **5.16 encrypted pseudonym mapping is not built**; this doc's helper is the first encryption in the app. Tag labels are encrypted at rest only (the key sits in Render's env, the database in Neon).
-3. **What "Delete everything" covers.** As built it also deletes the self-model (voice / decision / fact items), which is hard to recreate. Say if it should keep it.
+3. **What "Delete everything" covers: DECIDED, two commands (Braj, 17 Nov).** Activity and self-model are deleted separately (13.3). Hub: a future Settings screen (U1 to U3) should offer the same two actions, and say what "Delete everything" means if it is ever one button (the function `delete_everything` does both).
 4. **"Known" survives a tag purge** through the pseudonym kept in old message records (not reversible, but the same label re-typed becomes known again).
 5. Export contains decrypted labels (the user's own export).

@@ -2,7 +2,8 @@
 
   python -m scripts.data_controls summary                      # row counts; how many tag labels are readable
   python -m scripts.data_controls export --out my-data.json    # Export my data (includes sender-tag labels)
-  python -m scripts.data_controls delete --confirm "delete everything"
+  python -m scripts.data_controls delete-activity --confirm "delete my activity"      # messages, events, tags; KEEPS the self-model
+  python -m scripts.data_controls delete-self-model --confirm "delete my self-model"  # only the self-model
   python -m scripts.data_controls rewrap-tags                  # after setting / rotating DATA_ENCRYPTION_KEY
 
 The laptop's .env must hold the SAME DATA_ENCRYPTION_KEY (and APP_SECRET) as Render, or tag labels show as (unreadable).
@@ -26,8 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("summary")
     e = sub.add_parser("export")
     e.add_argument("--out", required=True, help="file to write (JSON)")
-    d = sub.add_parser("delete")
-    d.add_argument("--confirm", default="", help='type exactly: delete everything')
+    d = sub.add_parser("delete-activity")
+    d.add_argument("--confirm", default="", help='type exactly: delete my activity')
+    m = sub.add_parser("delete-self-model")
+    m.add_argument("--confirm", default="", help='type exactly: delete my self-model')
     sub.add_parser("rewrap-tags")
     args = p.parse_args(argv)
 
@@ -48,9 +51,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote {args.out}: " + ", ".join(f"{k} {v}" for k, v in data["counts"].items()))
         print("This file holds your data (messages are masked; sender-tag labels are readable). Keep it private.")
         return 0
-    if args.cmd == "delete":
+    if args.cmd in ("delete-activity", "delete-self-model"):
+        fn = data_controls.delete_activity if args.cmd == "delete-activity" else data_controls.delete_self_model
         try:
-            deleted = data_controls.delete_everything(engine, args.confirm, settings)
+            deleted = fn(engine, args.confirm, settings)
         except ValueError as err:
             print(err)
             return 2
