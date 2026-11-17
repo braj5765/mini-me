@@ -7,8 +7,8 @@ Mini Me is an AI twin that drafts replies in your voice, measures how well it kn
 > **Status: v0.1 prototype (single user, test mode).** A working correction loop (draft, capture, classify the edit, log everything) that you can reach three ways: a private Telegram bot, an Android Quick Settings tile, and an installable web app. It runs on my own and made-up messages only. No accuracy, time-saved or user numbers are claimed yet.
 
 **Demo videos**
-1. Web app flow: <ADD VIDEO 1 LINK>
-2. Quick Settings tile flow: <ADD VIDEO 2 LINK>
+1. Web app flow: https://youtube.com/shorts/VUW_0M8zQ8k
+2. Quick Settings tile flow: https://youtube.com/shorts/dTH_LpEh6eM
 
 **Product links**
 [Clickable prototype (15 screens, fictional data)](https://claude.ai/artifact/EBYQkocT2hQ9GhfU3oGC6r) · [PRD](https://claude.ai/artifact/DaQo1Nkz9977ujANt8oz92) · [Loop diagram](https://claude.ai/artifact/XCbHFKpdTbusvy4E26KTtd) · [Timeline](https://claude.ai/artifact/G2EKvaQad9Hvm7gxSwwKCD) · [One-pager](https://claude.ai/artifact/46rfoAmwBbkAxAL73vHFwV)
