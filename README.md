@@ -1,4 +1,4 @@
-# Mini Me
+﻿# Mini Me
 
 **The twin that earns the right to act.**
 
@@ -11,7 +11,7 @@ Mini Me is an AI twin that drafts replies in your voice, measures how well it kn
 2. Quick Settings tile flow: https://youtube.com/shorts/dTH_LpEh6eM
 
 **Product links**
-[Clickable prototype (15 screens, fictional data)](https://claude.ai/artifact/EBYQkocT2hQ9GhfU3oGC6r) · [PRD](https://claude.ai/artifact/DaQo1Nkz9977ujANt8oz92) · [Loop diagram](https://claude.ai/artifact/XCbHFKpdTbusvy4E26KTtd) · [Timeline](https://claude.ai/artifact/G2EKvaQad9Hvm7gxSwwKCD) · [One-pager](https://claude.ai/artifact/46rfoAmwBbkAxAL73vHFwV)
+[Clickable prototype (15 screens, fictional data)](https://claude.ai/artifact/EBYQkocT2hQ9GhfU3oGC6r) Â· [PRD](https://github.com/braj5765/mini-me/blob/main/docs/portfolio/Mini-Me-PRD-v0.3.pdf) Â· [Loop diagram](https://claude.ai/artifact/XCbHFKpdTbusvy4E26KTtd) Â· [Timeline](https://claude.ai/artifact/G2EKvaQad9Hvm7gxSwwKCD) Â· [One-pager](https://github.com/braj5765/mini-me/blob/main/docs/portfolio/Mini-Me-one-pager.pdf)
 
 ## Why
 
@@ -28,7 +28,7 @@ People use AI but few trust it to act for them. One-shot AI twins are trained on
 4. An LLM classifier labels the edit: **decision** (your stance changed), **fact** (a date, name or number changed), **voice** (same meaning, different wording) or **cosmetic**.
 5. Every step is written to an append-only event log. Telegram's `/events` shows the steps and `/stats` shows counts and the share handled with no or light edits.
 
-Nothing is ever sent for you: all three paths are draft-only. **Test mode** is on: shared message text is masked, used for the draft and not stored, and every draft says "Test mode — made-up or own messages only".
+Nothing is ever sent for you: all three paths are draft-only. **Test mode** is on: shared message text is masked, used for the draft and not stored, and every draft says "Test mode â€” made-up or own messages only".
 
 ## The loop
 
@@ -83,8 +83,8 @@ Deploy (Render + Neon), the Android tile setup and the Telegram secrets are desc
 
 ## Roadmap
 
-Privacy baseline (7-day purge of third-party text, fuller masking, provider terms checked) → shadow mode on Telegram and Gmail (the twin drafts and logs, never acts) → scores, learning and the autonomy engine (replacing the keyword limits) → UI design lock, then the remaining web screens including Settings with export and delete → first live Gmail send behind an undo window. Dates and effort are in the timeline.
+Privacy baseline (7-day purge of third-party text, fuller masking, provider terms checked) â†’ shadow mode on Telegram and Gmail (the twin drafts and logs, never acts) â†’ scores, learning and the autonomy engine (replacing the keyword limits) â†’ UI design lock, then the remaining web screens including Settings with export and delete â†’ first live Gmail send behind an undo window. Dates and effort are in the timeline.
 
 ## Docs
 
-Build notes per component are in `docs/` (foundation, Telegram bot, drafting, classifier, share-to-draft and web app, hosting). Product docs: [prototype](https://claude.ai/artifact/EBYQkocT2hQ9GhfU3oGC6r), [PRD](https://claude.ai/artifact/DaQo1Nkz9977ujANt8oz92), [loop diagram](https://claude.ai/artifact/XCbHFKpdTbusvy4E26KTtd), [timeline](https://claude.ai/artifact/G2EKvaQad9Hvm7gxSwwKCD), [one-pager](https://claude.ai/artifact/46rfoAmwBbkAxAL73vHFwV).
+Build notes per component are in `docs/` (foundation, Telegram bot, drafting, classifier, share-to-draft and web app, hosting). Product docs: [prototype](https://claude.ai/artifact/EBYQkocT2hQ9GhfU3oGC6r), [PRD](https://github.com/braj5765/mini-me/blob/main/docs/portfolio/Mini-Me-PRD-v0.3.pdf), [loop diagram](https://claude.ai/artifact/XCbHFKpdTbusvy4E26KTtd), [timeline](https://claude.ai/artifact/G2EKvaQad9Hvm7gxSwwKCD), [one-pager](https://github.com/braj5765/mini-me/blob/main/docs/portfolio/Mini-Me-one-pager.pdf).
